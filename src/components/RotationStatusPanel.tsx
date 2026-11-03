@@ -20,9 +20,12 @@ export default function RotationStatusPanel({ keys }: Props) {
   const [state, setState] = useState<ManagerState | null>(null);
 
   useEffect(() => {
-    const unsub = sessionManager.subscribe((s) => setState(s));
-    return unsub;
-  }, []);
+  const unsub = sessionManager.subscribe((s) => setState(s));
+
+  return () => {
+    unsub();
+  };
+}, []);
 
   if (!state) return null;
 
