@@ -66,7 +66,7 @@ class XmaxSessionManager {
     if (this.slots.has(keyId)) return;
     const sdk = await import("@xmaxai/web-sdk");
     const client = new sdk.XmaxClient(new sdk.XmaxConfiguration({ apiKey }));
-    const manager = client.createRealtimeManager(new sdk.RealtimeConfiguration({ model: sdk.RealtimeModel.x2_1_1_preview_cn }));
+    const manager = client.createRealtimeManager(new sdk.RealtimeConfiguration({ model: sdk.RealtimeModel.x2_1 }));
     const slot: Slot = { keyId, client, manager, connectionState: "idle", remoteTrack: null, startedAt: null, firstFrameAt: null, startPromise: null, failed: false, disconnected: false };
     this.slots.set(keyId, slot);
     this.order.push(keyId);
