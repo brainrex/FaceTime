@@ -24,7 +24,16 @@ export default function VideoOutputPanel({ isLive, onStop }: Props) {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [controlsVisible, setControlsVisible] = useState(true);
   const [pipSupported, setPipSupported] = useState(false);
+  const [isDesktop, setIsDesktop] = useState(false);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    const media = window.matchMedia("(min-width: 900px) and (pointer: fine)");
+    const update = () => setIsDesktop(media.matches);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
 
   useEffect(() => {
     const updatePipSupport = () => {
@@ -100,6 +109,7 @@ export default function VideoOutputPanel({ isLive, onStop }: Props) {
     setIsFullscreen(true);
     setControlsVisible(true);
     scheduleHideControls();
+    if (window.matchMedia("(min-width: 900px) and (pointer: fine)").matches) return;
     try {
       if (shellRef.current.requestFullscreen && !/iPhone|iPad|iPod/i.test(navigator.userAgent)) {
         await shellRef.current.requestFullscreen();
@@ -145,7 +155,7 @@ export default function VideoOutputPanel({ isLive, onStop }: Props) {
   return (
     <div
       ref={shellRef}
-      className={isFullscreen ? "viewer-wrap viewer-fullscreen" : "viewer-wrap"}
+      className={isFullscreen ? (isDesktop ? "viewer-wrap viewer-desktop-expanded" : "viewer-wrap viewer-fullscreen") : "viewer-wrap"}
       onClick={isFullscreen ? revealControls : undefined}
       aria-label={isFullscreen ? "Tap to show controls" : undefined}
     >
