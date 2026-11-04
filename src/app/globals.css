@@ -299,7 +299,7 @@ button { -webkit-tap-highlight-color:transparent; }
   justify-content: center !important;
   padding-bottom: max(28px, env(safe-area-inset-bottom)) !important;
 }
-.viewer-fullscreen .fullscreen-controls .icon-control:first-child { display: none !important; }
+/* Keep both exit and stop controls visible in expanded mobile view. */
 .viewer-fullscreen .fullscreen-controls .icon-control-stop { min-width: 112px; min-height: 46px; }
 
 /* Clearly visible, continuous motion without making the interface distracting. */
