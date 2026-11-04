@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { AccessToken, LiveKitAPI } from "livekit-server-sdk";
 
@@ -24,11 +24,16 @@ export async function GET(request: NextRequest) {
 
   try {
     const apiHost = serverUrl.replace(/^wss:/i, "https:").replace(/^ws:/i, "http:");
+    const expectedToken = createHmac("sha256", apiSecret).update("facetime-permanent-obs-output-v1").digest();
+    const suppliedToken = Buffer.from(streamToken, "hex");
+    if (suppliedToken.length !== expectedToken.length || !timingSafeEqual(expectedToken, suppliedToken)) {
+      return NextResponse.json({ error: "This OBS link is invalid." }, { status: 404, headers: { "Cache-Control": "no-store" } });
+    }
     const api = new LiveKitAPI({ host: apiHost, apiKey, secret: apiSecret });
     const roomName = roomNameFor(streamToken);
     const rooms = await api.room.listRooms();
     if (!rooms.some((room) => room.name === roomName)) {
-      return NextResponse.json({ error: "This FaceTime session has ended." }, { status: 410, headers: { "Cache-Control": "no-store" } });
+      return NextResponse.json({ error: "Waiting for FaceTime." }, { status: 503, headers: { "Cache-Control": "no-store", "Retry-After": "3" } });
     }
 
     const viewer = new AccessToken(apiKey, apiSecret, {
