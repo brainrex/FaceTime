@@ -130,10 +130,11 @@ class FaceTimeSessionManager {
   }
 
   async stopSession(): Promise<void> {
-    if (this.state.status === "idle" || this.state.status === "stopped") return;
-    this.patch({ status: "stopping", hasOutput: false, remoteTrack: null });
+    if (this.state.status !== "idle" && this.state.status !== "stopped") {
+      this.patch({ status: "stopping", hasOutput: false, remoteTrack: null });
+    }
     await this.cleanup();
-    this.patch({ status: "stopped", error: null });
+    this.patch({ status: "stopped", error: null, remoteTrack: null, hasOutput: false });
   }
 
   private async cleanup(): Promise<void> {
@@ -156,7 +157,9 @@ class FaceTimeSessionManager {
     } catch { /* capture may already have been released by the SDK */ }
   }
 
-  reset(): void {
+  async reset(): Promise<void> {
+    // Never reset the UI while an old peer connection/camera capture is still alive.
+    await this.cleanup();
     this.patch({ ...INITIAL });
   }
 }
