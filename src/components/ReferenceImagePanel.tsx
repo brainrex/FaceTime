@@ -10,6 +10,33 @@ interface Props {
   uploading?: boolean;
 }
 
+async function prepareUploadImage(file: File): Promise<File> {
+  // Decode and downscale oversized phone photos; keep the original if compression
+  // would make the upload larger or if the browser cannot decode the format.
+  try {
+    const bitmap = await createImageBitmap(file);
+    const maxDimension = 1920;
+    const scale = Math.min(1, maxDimension / Math.max(bitmap.width, bitmap.height));
+    if (scale === 1 && file.size <= 2 * 1024 * 1024) {
+      bitmap.close();
+      return file;
+    }
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+    const context = canvas.getContext("2d");
+    if (!context) { bitmap.close(); return file; }
+    context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    bitmap.close();
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.88));
+    if (!blob || blob.size >= file.size) return file;
+    const baseName = file.name.replace(/\.[^.]+$/, "") || "reference";
+    return new File([blob], `${baseName}.jpg`, { type: "image/jpeg", lastModified: Date.now() });
+  } catch {
+    return file;
+  }
+}
+
 export default function ReferenceImagePanel({ referenceUrl, onUpload, onRemove, disabled, uploading }: Props) {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
@@ -36,7 +63,8 @@ export default function ReferenceImagePanel({ referenceUrl, onUpload, onRemove, 
     previewRef.current = localPreview;
     setPreviewUrl(localPreview);
     try {
-      await onUpload(file);
+      const uploadFile = await prepareUploadImage(file);
+      await onUpload(uploadFile);
     } catch (error) {
       setLocalError(error instanceof Error ? error.message : "Image upload failed. Please try again.");
     }
