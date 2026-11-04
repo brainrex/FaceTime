@@ -294,3 +294,23 @@ button { -webkit-tap-highlight-color:transparent; }
   .site-header,.intro,.control-panel,.preview-panel,.obs-output-card { animation:none!important; }
   .button:not(:disabled):hover,.obs-copy-button:hover { transform:none!important; }
 }
+
+
+/* Continuous ambient movement, including narrow screens */
+.app-root{position:relative;isolation:isolate;overflow:hidden;background:radial-gradient(ellipse 48% 34% at 8% 18%,rgba(89,112,166,.11),transparent 72%),radial-gradient(ellipse 42% 38% at 92% 68%,rgba(94,111,151,.09),transparent 72%),var(--bg)}
+.app-root:before,.app-root:after{content:"";position:fixed;z-index:-1;width:min(58vw,720px);aspect-ratio:1;border-radius:50%;filter:blur(90px);opacity:.17;pointer-events:none;will-change:transform}
+.app-root:before{top:4%;left:-24%;background:radial-gradient(circle,rgba(113,145,211,.42),transparent 68%);animation:ambientDriftOne 24s ease-in-out infinite alternate}
+.app-root:after{right:-25%;bottom:-8%;background:radial-gradient(circle,rgba(118,130,174,.36),transparent 68%);animation:ambientDriftTwo 29s ease-in-out infinite alternate}
+@keyframes ambientDriftOne{0%{transform:translate3d(0,0,0) scale(.9)}50%{transform:translate3d(17vw,13vh,0) scale(1.12)}100%{transform:translate3d(7vw,25vh,0) scale(.98)}}
+@keyframes ambientDriftTwo{0%{transform:translate3d(0,0,0) scale(1)}50%{transform:translate3d(-15vw,-12vh,0) scale(1.16)}100%{transform:translate3d(-5vw,-22vh,0) scale(.92)}}
+.control-panel,.preview-panel{transition:border-color .35s ease,background-color .35s ease,box-shadow .45s ease}
+.control-panel:hover,.preview-panel:hover{border-color:rgba(173,194,235,.16);box-shadow:0 18px 60px rgba(0,0,0,.12)}
+.output-stage{box-shadow:inset 0 0 55px rgba(95,117,163,.035);transition:border-color .35s ease,box-shadow .45s ease}
+.preview-panel:has(.live-pill) .output-stage{border-color:rgba(110,214,160,.22);box-shadow:inset 0 0 65px rgba(110,214,160,.045),0 0 28px rgba(110,214,160,.035)}
+.obs-output-card{position:relative;overflow:hidden}
+.obs-output-card:after{content:"";position:absolute;top:-60%;left:-55%;width:35%;height:220%;transform:rotate(24deg);background:linear-gradient(90deg,transparent,rgba(190,207,241,.045),transparent);animation:obsCardShimmer 9s ease-in-out infinite;pointer-events:none}
+@keyframes obsCardShimmer{0%,55%{left:-55%;opacity:0}65%{opacity:1}100%{left:130%;opacity:0}}
+.session-dot{animation:dotBreath 2.8s ease-in-out infinite}
+@keyframes dotBreath{50%{opacity:.5;transform:scale(.82)}}
+@media(max-width:899px){.app-root:before,.app-root:after{width:100vw;filter:blur(75px);opacity:.14}.app-root:before{top:10%;left:-45%}.app-root:after{right:-48%;bottom:4%}.control-panel:hover,.preview-panel:hover{box-shadow:none}}
+@media(prefers-reduced-motion:reduce){.app-root:before,.app-root:after,.obs-output-card:after,.session-dot{animation:none!important}}
