@@ -371,3 +371,77 @@ button { -webkit-tap-highlight-color:transparent; }
 @media (prefers-reduced-motion: reduce) {
   .intro h1 span,.step-number { animation: none !important; }
 }
+
+
+/* Fullscreen is portalled to body on mobile, so it escapes all app transforms and stacking contexts. */
+body:has(.viewer-fullscreen) { overflow: hidden !important; }
+.viewer-fullscreen {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 2147483647 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  height: 100dvh !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  display: flex !important;
+  overflow: hidden !important;
+  background: #000 !important;
+  isolation: isolate;
+}
+.viewer-fullscreen .output-stage {
+  position: relative !important;
+  flex: 1 1 auto !important;
+  inset: auto !important;
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+}
+.viewer-fullscreen .video-mount,
+.viewer-fullscreen .output-placeholder { position: absolute !important; inset: 0 !important; }
+.viewer-fullscreen .fullscreen-controls {
+  position: absolute !important;
+  inset: auto 0 0 !important;
+  z-index: 2147483647 !important;
+  padding: 28px 20px max(24px, env(safe-area-inset-bottom)) !important;
+}
+.viewer-fullscreen .fullscreen-controls .icon-control:first-child { display: none !important; }
+
+/* Stronger live-state feedback: animated frame glow and a visible live pulse. */
+.preview-panel:has(.live-pill) .output-stage {
+  animation: liveStageBreathe 2.6s ease-in-out infinite;
+}
+.preview-panel:has(.live-pill) .output-stage::after {
+  content: "";
+  position: absolute;
+  z-index: 12;
+  inset: 0;
+  border: 1px solid rgba(110,214,160,.42);
+  border-radius: inherit;
+  box-shadow: inset 0 0 34px rgba(110,214,160,.09), 0 0 24px rgba(110,214,160,.12);
+  pointer-events: none;
+  animation: liveFramePulse 2.2s ease-in-out infinite;
+}
+.preview-panel:has(.live-pill) .live-pill {
+  animation: livePillGlow 1.8s ease-in-out infinite;
+}
+@keyframes liveStageBreathe {
+  0%,100% { box-shadow: inset 0 0 25px rgba(110,214,160,.035), 0 0 8px rgba(110,214,160,.025); }
+  50% { box-shadow: inset 0 0 55px rgba(110,214,160,.09), 0 0 30px rgba(110,214,160,.10); }
+}
+@keyframes liveFramePulse {
+  0%,100% { opacity: .48; }
+  50% { opacity: 1; }
+}
+@keyframes livePillGlow {
+  0%,100% { box-shadow: 0 0 0 rgba(110,214,160,0); }
+  50% { box-shadow: 0 0 18px rgba(110,214,160,.18); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .preview-panel:has(.live-pill) .output-stage,
+  .preview-panel:has(.live-pill) .output-stage::after,
+  .preview-panel:has(.live-pill) .live-pill { animation: none !important; }
+}
