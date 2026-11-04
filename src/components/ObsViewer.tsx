@@ -16,7 +16,12 @@ export default function ObsViewer({ token }: { token: string }) {
 
       try {
         const response = await fetch(`/api/obs/viewer?token=${encodeURIComponent(token)}`, { cache: "no-store" });
-        if (!response.ok) return;
+        if (!response.ok) {
+          if (response.status !== 404 && response.status !== 410 && !disposed) {
+            retryTimer = setTimeout(connect, 3000);
+          }
+          return;
+        }
         const credentials = await response.json() as { serverUrl: string; participantToken: string };
         if (disposed || !mountRef.current) return;
 
