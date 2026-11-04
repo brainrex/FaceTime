@@ -1,4 +1,4 @@
-import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { AccessToken, LiveKitAPI } from "livekit-server-sdk";
 
@@ -18,12 +18,30 @@ function getConfig() {
   return { serverUrl, apiKey, apiSecret, api: new LiveKitAPI({ host: apiHost, apiKey, secret: apiSecret }) };
 }
 
+function permanentStreamToken(apiSecret: string) {
+  return createHmac("sha256", apiSecret).update("facetime-permanent-obs-output-v1").digest("hex");
+}
+
 function roomNameFor(streamToken: string) {
   return `facetime-${createHash("sha256").update(streamToken).digest("hex")}`;
 }
 
 function jsonError(message: string, status: number) {
   return NextResponse.json({ error: message }, { status, headers: { "Cache-Control": "no-store" } });
+}
+
+export async function GET(request: NextRequest) {
+  try {
+    const { apiSecret } = getConfig();
+    const streamToken = permanentStreamToken(apiSecret);
+    const forwardedHost = request.headers.get("x-forwarded-host");
+    const forwardedProto = request.headers.get("x-forwarded-proto") || "https";
+    const appOrigin = forwardedHost ? `${forwardedProto}://${forwardedHost}` : new URL(request.url).origin;
+    return NextResponse.json({ streamUrl: `${appOrigin}/obs/${streamToken}` }, { headers: { "Cache-Control": "no-store" } });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Could not load the OBS output URL.";
+    return jsonError(message, message.includes("not configured") ? 503 : 500);
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -33,19 +51,13 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const { serverUrl, apiKey, apiSecret, api } = getConfig();
-    const streamToken = randomBytes(32).toString("hex");
-    const stopToken = createHmac("sha256", apiSecret).update(streamToken).digest("hex");
+    const { serverUrl, apiKey, apiSecret } = getConfig();
+    const streamToken = permanentStreamToken(apiSecret);
+    const stopToken = createHmac("sha256", apiSecret).update("facetime-stop-permanent-output-v1").digest("hex");
     const roomName = roomNameFor(streamToken);
 
-    await api.room.createRoom({
-      name: roomName,
-      emptyTimeout: 30,
-      maxParticipants: 2,
-    });
-
     const publisher = new AccessToken(apiKey, apiSecret, {
-      identity: `facetime-${randomBytes(8).toString("hex")}`,
+      identity: `facetime-publisher-${Date.now()}`,
       ttl: "6h",
     });
     publisher.addGrant({
@@ -76,7 +88,7 @@ export async function POST(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
-    const { apiSecret, api } = getConfig();
+    const { apiSecret } = getConfig();
     const body = await request.json();
     const streamToken = typeof body.streamToken === "string" ? body.streamToken : "";
     const stopToken = typeof body.stopToken === "string" ? body.stopToken : "";
@@ -91,7 +103,7 @@ export async function DELETE(request: NextRequest) {
       return jsonError("Invalid OBS session credentials.", 401);
     }
 
-    await api.room.deleteRoom(roomNameFor(streamToken)).catch(() => undefined);
+    // Do not delete the stable room: OBS stays connected and waits for the next publisher.
     return NextResponse.json({ stopped: true }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Could not stop the OBS stream.";
