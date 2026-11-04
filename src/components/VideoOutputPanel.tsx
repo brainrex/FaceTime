@@ -110,16 +110,9 @@ export default function VideoOutputPanel({ isLive, onStop }: Props) {
     setIsFullscreen(true);
     setControlsVisible(true);
     scheduleHideControls();
-    if (window.matchMedia("(min-width: 900px) and (pointer: fine)").matches) return;
-    try {
-      if (shellRef.current.requestFullscreen && !/iPhone|iPad|iPod/i.test(navigator.userAgent)) {
-        await shellRef.current.requestFullscreen();
-      }
-      // CSS fullscreen is the fallback for iOS Safari and browsers without
-      // Fullscreen API support on regular page elements.
-    } catch {
-      // Keep the CSS fullscreen view active when native fullscreen is refused.
-    }
+    // Mobile fullscreen uses a body-level portal and fixed viewport sizing.
+    // Avoid native requestFullscreen here: reparenting a native fullscreen
+    // element can cancel fullscreen in some mobile browsers.
   }, [scheduleHideControls]);
 
   const exitFullscreen = useCallback(async () => {
