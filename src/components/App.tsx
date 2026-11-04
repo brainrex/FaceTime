@@ -126,7 +126,6 @@ export default function App() {
     try {
       await obsStreamManager.stop();
       sessionManager.reset();
-      setObsUrl("");
       setObsError("");
       setObsCopied(false);
       await sessionManager.startSession(apiKey.trim(), referenceUrl, true);
@@ -159,7 +158,6 @@ export default function App() {
       await obsStreamManager.stop();
       await sessionManager.stopSession();
     } finally {
-      setObsUrl("");
       setObsError("");
       setObsStarting(false);
       setIsStopping(false);
@@ -172,7 +170,6 @@ export default function App() {
       if (state.status === "error" && step === "live") {
         setError(friendlyError(state.error ?? "The live session ended unexpectedly."));
         void obsStreamManager.stop();
-        setObsUrl("");
         setStep("error");
       }
     });
@@ -309,7 +306,7 @@ export default function App() {
               )}
             </div>
 
-            {isLive && isDesktop && (
+            {isDesktop && (
               <section className="obs-output-card" aria-label="OBS Browser Source output">
                 <div className="obs-output-heading">
                   <div className="obs-output-icon" aria-hidden="true">↗</div>
