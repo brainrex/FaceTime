@@ -7,37 +7,87 @@ import ReferenceImagePanel from "./ReferenceImagePanel";
 
 type Step = "key" | "reference" | "ready" | "live" | "error";
 
+function friendlyError(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  if (/无效的用户\s*API\s*Key|invalid user api key|invalid api key/i.test(message)) {
+    return "This API key was rejected. Check that it is an active Global API key with access to real-time generation.";
+  }
+  if (/insufficient|not enough credits|余额不足/i.test(message)) {
+    return "Your Xmax account does not have enough balance to start this session.";
+  }
+  if (/network|failed to fetch|timeout|连接失败/i.test(message)) {
+    return "Could not reach Xmax. Check your internet connection and try again.";
+  }
+  return message;
+}
+
 export default function App() {
   const [apiKey, setApiKey] = useState("");
   const [showKey, setShowKey] = useState(false);
+  const [keyVerified, setKeyVerified] = useState(false);
   const [referenceUrl, setReferenceUrl] = useState<string | null>(null);
   const [step, setStep] = useState<Step>("key");
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const [isStarting, setIsStarting] = useState(false);
   const [isStopping, setIsStopping] = useState(false);
   const [error, setError] = useState("");
 
   const isLive = step === "live";
-  const isBusy = isStarting || isStopping;
+  const isBusy = isVerifying || isUploading || isStarting || isStopping;
 
-  // ── Derive step from state ────────────────────────────────────────────────
-  const handleKeyConfirm = () => {
-    setError("");
+  const handleKeyConfirm = useCallback(async () => {
     if (!apiKey.trim()) {
       setError("Enter your API key to continue.");
       return;
     }
+    setError("");
+    setIsVerifying(true);
+    try {
+      await sessionManager.verifyApiKey(apiKey.trim());
+      setKeyVerified(true);
+      setStep("reference");
+    } catch (e) {
+      setKeyVerified(false);
+      setError(friendlyError(e));
+    } finally {
+      setIsVerifying(false);
+    }
+  }, [apiKey]);
+
+  const handleKeyChange = (value: string) => {
+    setApiKey(value);
+    setKeyVerified(false);
+    setReferenceUrl(null);
+    setStep("key");
+    setError("");
+  };
+
+  const handleUpload = useCallback(async (file: File) => {
+    if (!apiKey.trim() || !keyVerified) throw new Error("Verify your API key before uploading an image.");
+    setError("");
+    setIsUploading(true);
+    try {
+      const url = await sessionManager.uploadReferenceImage(apiKey.trim(), file);
+      setReferenceUrl(url);
+      setStep("ready");
+      return url;
+    } catch (e) {
+      const message = friendlyError(e);
+      setError(message);
+      throw new Error(message);
+    } finally {
+      setIsUploading(false);
+    }
+  }, [apiKey, keyVerified]);
+
+  const handleReferenceRemove = () => {
+    setReferenceUrl(null);
     setStep("reference");
   };
 
-  const handleReferenceReady = (url: string | null) => {
-    setReferenceUrl(url);
-    if (url && step === "reference") setStep("ready");
-    if (!url && step === "ready") setStep("reference");
-  };
-
-  // ── Start ─────────────────────────────────────────────────────────────────
   const handleStart = useCallback(async () => {
-    if (!apiKey.trim() || !referenceUrl) return;
+    if (!apiKey.trim() || !keyVerified || !referenceUrl) return;
     setError("");
     setIsStarting(true);
     try {
@@ -45,15 +95,13 @@ export default function App() {
       await sessionManager.startSession(apiKey.trim(), referenceUrl, true);
       setStep("live");
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      setError(msg);
+      setError(friendlyError(e));
       setStep("error");
     } finally {
       setIsStarting(false);
     }
-  }, [apiKey, referenceUrl]);
+  }, [apiKey, keyVerified, referenceUrl]);
 
-  // ── Stop ──────────────────────────────────────────────────────────────────
   const handleStop = useCallback(async () => {
     setIsStopping(true);
     try {
@@ -64,203 +112,162 @@ export default function App() {
     }
   }, [referenceUrl]);
 
-  // ── Listen for session failures mid-stream ────────────────────────────────
   useEffect(() => {
-    const unsub = sessionManager.subscribe((state) => {
+    const unsubscribe = sessionManager.subscribe((state) => {
       if (state.status === "error" && step === "live") {
-        setError(state.error ?? "The session ended unexpectedly.");
+        setError(friendlyError(state.error ?? "The live session ended unexpectedly."));
         setStep("error");
       }
     });
-    return unsub;
+    return () => {
+      unsubscribe();
+    };
   }, [step]);
 
-  // ── Cleanup on unmount ────────────────────────────────────────────────────
   useEffect(() => {
     return () => {
       void sessionManager.stopSession().catch(() => {});
     };
   }, []);
 
-  // ── Retry after error ─────────────────────────────────────────────────────
   const handleRetry = () => {
     setError("");
     sessionManager.reset();
-    setStep(referenceUrl ? "ready" : "reference");
+    setStep(referenceUrl ? "ready" : keyVerified ? "reference" : "key");
   };
 
-  const keyConfirmed = step !== "key";
-
   return (
-    <div className="app-root">
+    <main className="app-root">
       <div className="page-wrap">
-
-        {/* ── Header ───────────────────────────────────────────────────── */}
         <header className="site-header">
-          <div className="wordmark">
-            <div className="wordmark-icon">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
-                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/>
-                <circle cx="12" cy="12" r="4"/>
+          <a className="wordmark" href="/" aria-label="FaceTime home">
+            <span className="wordmark-icon" aria-hidden="true">
+              <svg viewBox="0 0 32 32" fill="none">
+                <rect x="3" y="5" width="26" height="22" rx="7" stroke="currentColor" strokeWidth="2" />
+                <path d="M13 12.5 21 16l-8 3.5v-7Z" fill="currentColor" />
               </svg>
-            </div>
-            <div>
-              <div className="wordmark-name">FaceTime</div>
-              <div className="wordmark-tagline">Live character experience</div>
-            </div>
-          </div>
-
+            </span>
+            <span className="wordmark-name">FaceTime</span>
+          </a>
           <div className={`session-badge${isLive ? " live" : ""}`}>
             <span className="session-dot" />
-            {isLive ? "Live" : isBusy ? "Connecting…" : "Ready"}
+            {isLive ? "Live" : isBusy ? "Working…" : "Studio"}
           </div>
         </header>
 
-        {/* ── Main grid ────────────────────────────────────────────────── */}
-        <div className="app-grid">
+        <section className="intro">
+          <p className="eyebrow">REAL-TIME CHARACTER REPLACEMENT</p>
+          <h1>Step into another <span>character.</span></h1>
+          <p className="intro-copy">Bring a reference image to life in your live camera feed.</p>
+        </section>
 
-          {/* Left column – controls */}
-          <aside>
+        <div className="workspace">
+          <aside className="control-panel">
+            <section className="setup-section">
+              <div className="section-heading">
+                <span className="step-number">01</span>
+                <div>
+                  <h2>Connect your account</h2>
+                  <p>Use your Xmax API key to begin.</p>
+                </div>
+              </div>
 
-            {/* Step 1: API key */}
-            <div className="card" style={{ marginBottom: 16 }}>
-              <div className="card-label">API key</div>
-              <p className="card-title" style={{ marginBottom: 14 }}>Connect</p>
-
-              <label className="field-label" htmlFor="api-key">Your key</label>
-              <div className="field-row" style={{ marginBottom: keyConfirmed ? 10 : 0 }}>
+              <label className="field-label" htmlFor="api-key">API key</label>
+              <div className="field-row">
                 <input
                   id="api-key"
                   className="field"
                   type={showKey ? "text" : "password"}
                   autoComplete="off"
                   spellCheck={false}
-                  placeholder="Paste your key here"
+                  placeholder="Paste your API key"
                   value={apiKey}
-                  onChange={(e) => {
-                    setApiKey(e.target.value);
-                    if (keyConfirmed) {
-                      setStep("key");
-                      setReferenceUrl(null);
-                    }
-                  }}
+                  onChange={(event) => handleKeyChange(event.target.value)}
                   disabled={isBusy || isLive}
                 />
                 <button
-                  className="btn btn-ghost"
+                  className="visibility-button"
                   type="button"
-                  onClick={() => setShowKey((v) => !v)}
+                  onClick={() => setShowKey((visible) => !visible)}
                   disabled={isBusy || isLive}
-                  aria-label={showKey ? "Hide key" : "Show key"}
+                  aria-label={showKey ? "Hide API key" : "Show API key"}
                 >
                   {showKey ? "Hide" : "Show"}
                 </button>
               </div>
 
-              {keyConfirmed ? (
-                <div className="key-verified">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                    <polyline points="20 6 9 17 4 12"/>
-                  </svg>
-                  Key confirmed
+              {keyVerified ? (
+                <div className="verified-state">
+                  <span className="verified-check">✓</span>
+                  API key verified
+                  <button type="button" onClick={() => handleKeyChange("")} disabled={isBusy || isLive}>Change</button>
                 </div>
               ) : (
-                <button
-                  className="btn btn-primary btn-full"
-                  style={{ marginTop: 12 }}
-                  onClick={handleKeyConfirm}
-                  disabled={!apiKey.trim() || isBusy}
-                >
-                  Continue
+                <button className="button button-primary button-full" onClick={handleKeyConfirm} disabled={!apiKey.trim() || isBusy}>
+                  {isVerifying ? <><span className="spinner" /> Verifying…</> : "Verify API key"}
                 </button>
               )}
-            </div>
+            </section>
 
-            {/* Step 2: Reference image */}
-            <div className={`card${!keyConfirmed ? " muted" : ""}`} style={{ marginBottom: 16 }}>
-              <div className="card-label">Character</div>
-              <p className="card-title" style={{ marginBottom: 4 }}>Reference image</p>
-              <p className="card-desc">Upload a clear image of the character to use.</p>
+            <div className="section-divider" />
+
+            <section className={`setup-section${!keyVerified ? " section-disabled" : ""}`}>
+              <div className="section-heading">
+                <span className="step-number">02</span>
+                <div>
+                  <h2>Choose your character</h2>
+                  <p>Upload a clear reference image.</p>
+                </div>
+              </div>
               <ReferenceImagePanel
                 referenceUrl={referenceUrl}
-                onUrlReady={handleReferenceReady}
-                disabled={!keyConfirmed || isLive || isBusy}
+                onUpload={handleUpload}
+                onRemove={handleReferenceRemove}
+                disabled={!keyVerified || isLive || isBusy}
+                uploading={isUploading}
               />
-            </div>
+            </section>
 
-            {/* Error banner */}
             {error && (
-              <div className="alert alert-error" style={{ marginBottom: 14 }}>
-                {error}
-                {step === "error" && (
-                  <button
-                    className="btn btn-ghost"
-                    style={{ marginTop: 10, width: "100%" }}
-                    onClick={handleRetry}
-                  >
-                    Try again
-                  </button>
-                )}
+              <div className="error-message" role="alert">
+                <span className="error-icon">!</span>
+                <div>
+                  <p>{error}</p>
+                  {step === "error" && <button type="button" className="text-button" onClick={handleRetry}>Try again</button>}
+                </div>
               </div>
             )}
 
-            {/* Start / Stop */}
-            {!isLive ? (
-              <button
-                className="btn btn-primary btn-full"
-                onClick={handleStart}
-                disabled={!keyConfirmed || !referenceUrl || isBusy}
-              >
-                {isStarting ? (
-                  <><span className="spinner" /> Starting…</>
-                ) : (
-                  "Start live session"
-                )}
-              </button>
-            ) : (
-              <button
-                className="btn btn-danger btn-full"
-                onClick={handleStop}
-                disabled={isStopping}
-              >
-                {isStopping ? (
-                  <><span className="spinner" style={{ borderTopColor: "#fca5a5" }} /> Stopping…</>
-                ) : (
-                  "End session"
-                )}
-              </button>
-            )}
-
+            <div className="start-area">
+              {!isLive ? (
+                <button className="button button-primary button-full start-button" onClick={handleStart} disabled={!keyVerified || !referenceUrl || isBusy}>
+                  {isStarting ? <><span className="spinner" /> Starting session…</> : "Start live session"}
+                  {!isStarting && <span aria-hidden="true">↗</span>}
+                </button>
+              ) : (
+                <button className="button button-stop button-full start-button" onClick={handleStop} disabled={isStopping}>
+                  {isStopping ? <><span className="spinner" /> Ending session…</> : "End live session"}
+                </button>
+              )}
+              <p className="privacy-note">Your API key is used only in this browser session.</p>
+            </div>
           </aside>
 
-          {/* Right column – video output */}
-          <section className="card" style={{ padding: 20 }}>
-            <div className="viewer-controls">
-              <div className="viewer-title">
-                <div className="card-label" style={{ marginBottom: 4 }}>Live output</div>
-                <p className="card-title" style={{ marginBottom: 0 }}>Generated video</p>
+          <section className="preview-panel" aria-label="Live video preview">
+            <div className="preview-header">
+              <div>
+                <p className="eyebrow">YOUR CANVAS</p>
+                <h2>Live preview</h2>
               </div>
-              {isLive && (
-                <div className="live-pill">
-                  <span className="session-dot" />
-                  LIVE
-                </div>
-              )}
+              {isLive && <span className="live-pill"><span className="session-dot" /> LIVE</span>}
             </div>
-
             <VideoOutputPanel isLive={isLive} onStop={handleStop} />
-
-            <p style={{ marginTop: 12, fontSize: 11, color: "var(--text-3)", textAlign: "center" }}>
-              On desktop, use Picture in Picture or capture this window in your capture software.
-            </p>
+            <p className="preview-caption">{isLive ? "Your generated character is now live." : "Your live character will appear here."}</p>
           </section>
-
         </div>
 
-        <footer style={{ marginTop: 48, textAlign: "center", fontSize: 11, color: "var(--text-3)" }}>
-          FaceTime · Live character experience
-        </footer>
+        <footer className="site-footer">FaceTime <span>·</span> A new way to show up.</footer>
       </div>
-    </div>
+    </main>
   );
 }
