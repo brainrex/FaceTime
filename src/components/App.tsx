@@ -110,8 +110,8 @@ export default function App() {
     setError("");
     setIsUploading(true);
     try {
-      setReferenceFile(file);
       const url = await sessionManager.uploadReferenceImage(apiKey.trim(), file);
+      setReferenceFile(file);
       setReferenceUrl(url);
       setStep("ready");
       return url;
