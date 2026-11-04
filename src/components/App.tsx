@@ -27,6 +27,7 @@ export default function App() {
   const [showKey, setShowKey] = useState(false);
   const [keyVerified, setKeyVerified] = useState(false);
   const [referenceUrl, setReferenceUrl] = useState<string | null>(null);
+  const [referenceFile, setReferenceFile] = useState<File | null>(null);
   const [step, setStep] = useState<Step>("key");
   const [isVerifying, setIsVerifying] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -78,15 +79,23 @@ export default function App() {
     setIsVerifying(true);
     try {
       await sessionManager.verifyApiKey(apiKey.trim());
+      // Xmax uploads may be scoped to the API credential. Re-upload the retained
+      // local file after verifying a replacement key instead of reusing a stale URL.
+      if (referenceFile) {
+        setIsUploading(true);
+        const refreshedUrl = await sessionManager.uploadReferenceImage(apiKey.trim(), referenceFile);
+        setReferenceUrl(refreshedUrl);
+      }
       setKeyVerified(true);
-      setStep(referenceUrl ? "ready" : "reference");
+      setStep(referenceFile || referenceUrl ? "ready" : "reference");
     } catch (e) {
       setKeyVerified(false);
       setError(friendlyError(e));
     } finally {
+      setIsUploading(false);
       setIsVerifying(false);
     }
-  }, [apiKey, referenceUrl]);
+  }, [apiKey, referenceUrl, referenceFile]);
 
   const handleKeyChange = (value: string) => {
     setApiKey(value);
@@ -101,6 +110,7 @@ export default function App() {
     setError("");
     setIsUploading(true);
     try {
+      setReferenceFile(file);
       const url = await sessionManager.uploadReferenceImage(apiKey.trim(), file);
       setReferenceUrl(url);
       setStep("ready");
@@ -116,6 +126,7 @@ export default function App() {
 
   const handleReferenceRemove = () => {
     setReferenceUrl(null);
+    setReferenceFile(null);
     setStep("reference");
   };
 
@@ -125,7 +136,7 @@ export default function App() {
     setIsStarting(true);
     try {
       await obsStreamManager.stop();
-      sessionManager.reset();
+      await sessionManager.reset();
       setObsError("");
       setObsCopied(false);
       await sessionManager.startSession(apiKey.trim(), referenceUrl, true);
@@ -187,8 +198,9 @@ export default function App() {
 
   const handleRetry = () => {
     setError("");
-    sessionManager.reset();
-    setStep(referenceUrl ? "ready" : keyVerified ? "reference" : "key");
+    void sessionManager.reset().finally(() => {
+      setStep(referenceUrl ? "ready" : keyVerified ? "reference" : "key");
+    });
   };
 
   return (
