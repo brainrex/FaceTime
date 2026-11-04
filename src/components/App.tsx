@@ -79,19 +79,19 @@ export default function App() {
     try {
       await sessionManager.verifyApiKey(apiKey.trim());
       setKeyVerified(true);
-      setStep("reference");
+      setStep(referenceUrl ? "ready" : "reference");
     } catch (e) {
       setKeyVerified(false);
       setError(friendlyError(e));
     } finally {
       setIsVerifying(false);
     }
-  }, [apiKey]);
+  }, [apiKey, referenceUrl]);
 
   const handleKeyChange = (value: string) => {
     setApiKey(value);
     setKeyVerified(false);
-    setReferenceUrl(null);
+    // Keep the uploaded reference image when switching to a replacement API key.
     setStep("key");
     setError("");
   };
