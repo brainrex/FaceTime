@@ -34,6 +34,7 @@ export default function App() {
   const [isStopping, setIsStopping] = useState(false);
   const [error, setError] = useState("");
   const [obsUrl, setObsUrl] = useState("");
+  const [obsUrlLoading, setObsUrlLoading] = useState(true);
   const [obsError, setObsError] = useState("");
   const [obsStarting, setObsStarting] = useState(false);
   const [obsCopied, setObsCopied] = useState(false);
