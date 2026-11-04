@@ -1,6 +1,6 @@
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { AccessToken, LiveKitAPI } from "livekit-server-sdk";
+import { AccessToken } from "livekit-server-sdk";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,8 +14,7 @@ function getConfig() {
     throw new Error("LiveKit is not configured. Add LIVEKIT_URL, LIVEKIT_API_KEY and LIVEKIT_API_SECRET to your deployment environment.");
   }
 
-  const apiHost = serverUrl.replace(/^wss:/i, "https:").replace(/^ws:/i, "http:");
-  return { serverUrl, apiKey, apiSecret, api: new LiveKitAPI({ host: apiHost, apiKey, secret: apiSecret }) };
+  return { serverUrl, apiKey, apiSecret };
 }
 
 function permanentStreamToken(apiSecret: string) {
