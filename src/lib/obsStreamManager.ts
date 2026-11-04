@@ -67,11 +67,28 @@ class ObsStreamManager {
     if (!context) throw new Error("Your browser could not prepare the OBS video output.");
 
     const drawFrame = () => {
-      if (this.relayVideo !== video || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return;
-      context.drawImage(video, 0, 0, canvas.width, canvas.height);
-      this.animationFrame = requestAnimationFrame(drawFrame);
+      if (this.relayVideo !== video) return;
+      // Keep polling while the receiver track is warming up. Returning without
+      // requesting another frame leaves OBS with a permanently black canvas.
+      if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA &&
+          video.videoWidth > 0 && video.videoHeight > 0) {
+        try {
+          context.drawImage(video, 0, 0, canvas.width, canvas.height);
+        } catch {
+          // A frame can briefly be unavailable during WebRTC renegotiation.
+        }
+      }
+      if (sourceTrack.readyState === "live") {
+        this.animationFrame = requestAnimationFrame(drawFrame);
+      }
     };
-    drawFrame();
+    this.animationFrame = requestAnimationFrame(drawFrame);
+    sourceTrack.addEventListener("ended", () => {
+      if (this.relayVideo === video && this.animationFrame) {
+        cancelAnimationFrame(this.animationFrame);
+        this.animationFrame = 0;
+      }
+    }, { once: true });
 
     const stream = canvas.captureStream(30);
     this.relayStream = stream;
