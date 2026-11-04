@@ -360,7 +360,7 @@ body:has(.viewer-fullscreen) { overflow: hidden !important; }
   z-index: 2147483647 !important;
   padding: 28px 20px max(24px, env(safe-area-inset-bottom)) !important;
 }
-.viewer-fullscreen .fullscreen-controls .icon-control:first-child { display: none !important; }
+/* Exit control stays visible in expanded mobile view. */
 
 /* Stronger live-state feedback: animated frame glow and a visible live pulse. */
 .preview-panel:has(.live-pill) .output-stage {
