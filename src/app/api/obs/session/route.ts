@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
   try {
     const { serverUrl, apiKey, apiSecret } = getConfig();
     const streamToken = permanentStreamToken(apiSecret);
-    const stopToken = createHmac("sha256", apiSecret).update("facetime-stop-permanent-output-v1").digest("hex");
+    const stopToken = createHmac("sha256", apiSecret).update(streamToken).digest("hex");
     const roomName = roomNameFor(streamToken);
 
     const publisher = new AccessToken(apiKey, apiSecret, {
