@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { sessionManager } from "@/lib/sessionManager";
+import { obsStreamManager } from "@/lib/obsStreamManager";
 import VideoOutputPanel from "./VideoOutputPanel";
 import ReferenceImagePanel from "./ReferenceImagePanel";
 
@@ -32,9 +33,22 @@ export default function App() {
   const [isStarting, setIsStarting] = useState(false);
   const [isStopping, setIsStopping] = useState(false);
   const [error, setError] = useState("");
+  const [obsUrl, setObsUrl] = useState("");
+  const [obsError, setObsError] = useState("");
+  const [obsStarting, setObsStarting] = useState(false);
+  const [obsCopied, setObsCopied] = useState(false);
+  const [isDesktop, setIsDesktop] = useState(false);
 
   const isLive = step === "live";
   const isBusy = isVerifying || isUploading || isStarting || isStopping;
+
+  useEffect(() => {
+    const media = window.matchMedia("(min-width: 900px) and (pointer: fine)");
+    const update = () => setIsDesktop(media.matches);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
 
   const handleKeyConfirm = useCallback(async () => {
     if (!apiKey.trim()) {
@@ -91,9 +105,27 @@ export default function App() {
     setError("");
     setIsStarting(true);
     try {
+      await obsStreamManager.stop();
       sessionManager.reset();
+      setObsUrl("");
+      setObsError("");
+      setObsCopied(false);
       await sessionManager.startSession(apiKey.trim(), referenceUrl, true);
       setStep("live");
+
+      if (window.matchMedia("(min-width: 900px) and (pointer: fine)").matches) {
+        setObsStarting(true);
+        try {
+          const generatedTrack = sessionManager.getState().remoteTrack;
+          if (!generatedTrack) throw new Error("The generated video track is not available yet.");
+          const output = await obsStreamManager.start(generatedTrack as unknown as MediaStreamTrack);
+          setObsUrl(output.url);
+        } catch (obsFailure) {
+          setObsError(friendlyError(obsFailure));
+        } finally {
+          setObsStarting(false);
+        }
+      }
     } catch (e) {
       setError(friendlyError(e));
       setStep("error");
@@ -105,8 +137,12 @@ export default function App() {
   const handleStop = useCallback(async () => {
     setIsStopping(true);
     try {
+      await obsStreamManager.stop();
       await sessionManager.stopSession();
     } finally {
+      setObsUrl("");
+      setObsError("");
+      setObsStarting(false);
       setIsStopping(false);
       setStep(referenceUrl ? "ready" : "reference");
     }
@@ -116,6 +152,8 @@ export default function App() {
     const unsubscribe = sessionManager.subscribe((state) => {
       if (state.status === "error" && step === "live") {
         setError(friendlyError(state.error ?? "The live session ended unexpectedly."));
+        void obsStreamManager.stop();
+        setObsUrl("");
         setStep("error");
       }
     });
@@ -126,6 +164,7 @@ export default function App() {
 
   useEffect(() => {
     return () => {
+      void obsStreamManager.stop();
       void sessionManager.stopSession().catch(() => {});
     };
   }, []);
@@ -250,6 +289,34 @@ export default function App() {
                 </button>
               )}
             </div>
+
+            {isLive && isDesktop && (
+              <section className="obs-output-card" aria-label="OBS Browser Source output">
+                <div className="obs-output-heading">
+                  <div className="obs-output-icon" aria-hidden="true">↗</div>
+                  <div>
+                    <h3>OBS Browser Source</h3>
+                    <p>{obsStarting ? "Preparing your private output…" : obsUrl ? "Your generated video is ready for OBS." : "The OBS output is not connected."}</p>
+                  </div>
+                  <span className={obsUrl ? "obs-status connected" : "obs-status"}>{obsUrl ? "Ready" : obsStarting ? "Connecting" : "Offline"}</span>
+                </div>
+                {obsUrl ? (
+                  <>
+                    <div className="obs-url-row">
+                      <input className="obs-url-field" aria-label="Private OBS output URL" value={obsUrl} readOnly onFocus={(event) => event.currentTarget.select()} />
+                      <button className="obs-copy-button" type="button" onClick={() => {
+                        void navigator.clipboard.writeText(obsUrl).then(() => setObsCopied(true)).catch(() => setObsError("Copy was blocked by your browser. Select the URL and copy it manually."));
+                      }}>{obsCopied ? "Copied" : "Copy URL"}</button>
+                    </div>
+                    <p className="obs-help">In OBS: Sources → + → Browser → paste the URL above.</p>
+                  </>
+                ) : obsError ? (
+                  <p className="obs-error" role="status">{obsError}</p>
+                ) : (
+                  <p className="obs-help">A private link will appear here when the output connects.</p>
+                )}
+              </section>
+            )}
           </aside>
 
           <section className="preview-panel" aria-label="Live video preview">
