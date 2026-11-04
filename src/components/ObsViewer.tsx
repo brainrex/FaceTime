@@ -17,7 +17,7 @@ export default function ObsViewer({ token }: { token: string }) {
       try {
         const response = await fetch(`/api/obs/viewer?token=${encodeURIComponent(token)}`, { cache: "no-store" });
         if (!response.ok) {
-          if (response.status !== 404 && response.status !== 410 && !disposed) {
+          if (response.status !== 404 && !disposed) {
             retryTimer = setTimeout(connect, 3000);
           }
           return;
