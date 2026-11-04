@@ -158,7 +158,7 @@ export default function App() {
         <section className="intro">
           <p className="eyebrow">REAL-TIME CHARACTER REPLACEMENT</p>
           <h1>Step into another <span>character.</span></h1>
-          <p className="intro-copy">Bring a reference image to life in your live camera feed.</p>
+          <p className="intro-copy">Experience a new reality, live.</p>
         </section>
 
         <div className="workspace">
@@ -192,7 +192,7 @@ export default function App() {
                   disabled={isBusy || isLive}
                   aria-label={showKey ? "Hide API key" : "Show API key"}
                 >
-                  {showKey ? "Hide" : "Show"}
+                  <svg viewBox="0 0 24 24" aria-hidden="true" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">{showKey ? <><path d="M3 3l18 18"/><path d="M10.6 10.6a2 2 0 002.8 2.8"/><path d="M9.9 5.2A10.8 10.8 0 0112 5c5 0 9 4.5 10 7-.4 1.1-1.3 2.5-2.7 3.7M6.2 6.2C4.1 7.5 2.6 9.5 2 12c.6 1.7 2.2 3.7 4.7 5.2A10.8 10.8 0 0012 19c1.2 0 2.3-.2 3.3-.6"/></> : <><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></>}</svg>
                 </button>
               </div>
 
@@ -249,7 +249,6 @@ export default function App() {
                   {isStopping ? <><span className="spinner" /> Ending session…</> : "End live session"}
                 </button>
               )}
-              <p className="privacy-note">Your key is not saved by FaceTime. Requests are sent to Xmax.</p>
             </div>
           </aside>
 

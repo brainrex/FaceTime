@@ -9,56 +9,60 @@ interface Props {
   onStop: () => void;
 }
 
-type ViewMode = "windowed" | "expanded" | "fullscreen";
+type PipVideo = HTMLVideoElement & {
+  webkitSetPresentationMode?: (mode: "inline" | "picture-in-picture") => void;
+  webkitPresentationMode?: string;
+};
 
 export default function VideoOutputPanel({ isLive, onStop }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const shellRef = useRef<HTMLDivElement>(null);
+  const videoRef = useRef<PipVideo | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const viewRef = useRef<any>(null);
-
   const [hasOutput, setHasOutput] = useState(false);
-  const [viewMode, setViewMode] = useState<ViewMode>("windowed");
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const [controlsVisible, setControlsVisible] = useState(true);
+  const [pipSupported, setPipSupported] = useState(false);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // ── Track browser fullscreen state ───────────────────────────────────────
   useEffect(() => {
-    const onFsChange = () => {
-      if (!document.fullscreenElement) {
-        setViewMode((m) => (m === "fullscreen" ? "windowed" : m));
-        setControlsVisible(true);
-      }
+    const updatePipSupport = () => {
+      const video = containerRef.current?.querySelector("video") as PipVideo | null;
+      videoRef.current = video;
+      setPipSupported(Boolean(video && (video.requestPictureInPicture || video.webkitSetPresentationMode)));
     };
-    document.addEventListener("fullscreenchange", onFsChange);
-    return () => document.removeEventListener("fullscreenchange", onFsChange);
+    updatePipSupport();
+    const observer = new MutationObserver(updatePipSupport);
+    if (containerRef.current) observer.observe(containerRef.current, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, [hasOutput]);
+
+  useEffect(() => {
+    const onFullscreenChange = () => {
+      if (!document.fullscreenElement) setIsFullscreen(false);
+    };
+    document.addEventListener("fullscreenchange", onFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", onFullscreenChange);
   }, []);
 
-  // ── Subscribe to session and attach video track ───────────────────────────
   useEffect(() => {
     let alive = true;
-
     const unsub = sessionManager.subscribe(async (state: SessionState) => {
       if (!alive || !containerRef.current) return;
-
-      // Always black when there is no confirmed live output.
       if (state.status !== "live" || !state.remoteTrack) {
         setHasOutput(false);
-        // Detach the view if we had one.
         if (viewRef.current) {
           try {
-            const v = viewRef.current;
-            if (typeof v.detach === "function") v.detach();
+            if (typeof viewRef.current.detach === "function") viewRef.current.detach();
           } catch { /* ignore */ }
           viewRef.current = null;
         }
         return;
       }
-
       try {
         const { XmaxRealtimeVideoView, VideoContentMode } = await import("@xmaxai/web-sdk");
         if (!alive || !containerRef.current) return;
-
         if (!viewRef.current) {
           const view = new XmaxRealtimeVideoView();
           view.element.style.width = "100%";
@@ -68,14 +72,12 @@ export default function VideoOutputPanel({ isLive, onStop }: Props) {
           view.videoContentMode = VideoContentMode.fill;
           viewRef.current = view;
         }
-
         viewRef.current.track = state.remoteTrack;
         setHasOutput(true);
       } catch {
         setHasOutput(false);
       }
     });
-
     return () => {
       alive = false;
       unsub();
@@ -83,7 +85,6 @@ export default function VideoOutputPanel({ isLive, onStop }: Props) {
     };
   }, []);
 
-  // ── Control auto-hide (fullscreen only) ──────────────────────────────────
   const scheduleHideControls = useCallback(() => {
     if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
     hideTimerRef.current = setTimeout(() => setControlsVisible(false), 5000);
@@ -94,47 +95,45 @@ export default function VideoOutputPanel({ isLive, onStop }: Props) {
     scheduleHideControls();
   }, [scheduleHideControls]);
 
-  // ── Fullscreen ────────────────────────────────────────────────────────────
   const enterFullscreen = useCallback(async () => {
     if (!shellRef.current) return;
+    setIsFullscreen(true);
+    setControlsVisible(true);
+    scheduleHideControls();
     try {
-      await shellRef.current.requestFullscreen();
-      setViewMode("fullscreen");
-      setControlsVisible(true);
-      scheduleHideControls();
+      if (shellRef.current.requestFullscreen && !/iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+        await shellRef.current.requestFullscreen();
+      }
+      // CSS fullscreen is the fallback for iOS Safari and browsers without
+      // Fullscreen API support on regular page elements.
     } catch {
-      // Fullscreen refused — stay in windowed mode.
+      // Keep the CSS fullscreen view active when native fullscreen is refused.
     }
   }, [scheduleHideControls]);
 
   const exitFullscreen = useCallback(async () => {
     if (document.fullscreenElement) {
-      await document.exitFullscreen();
+      try { await document.exitFullscreen(); } catch { /* CSS fallback below */ }
     }
-    setViewMode("windowed");
+    setIsFullscreen(false);
     setControlsVisible(true);
     if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
   }, []);
 
-  // ── Expanded desktop view ─────────────────────────────────────────────────
-  const toggleExpanded = useCallback(() => {
-    setViewMode((m) => (m === "expanded" ? "windowed" : "expanded"));
-  }, []);
-
-  // ── Picture-in-Picture ────────────────────────────────────────────────────
   const enterPiP = useCallback(async () => {
-    const video = containerRef.current?.querySelector("video") as (HTMLVideoElement & {
-      requestPictureInPicture?: () => Promise<PictureInPictureWindow>;
-    }) | null;
-
-    if (!video?.requestPictureInPicture) {
-      alert("Picture-in-Picture is not supported in this browser. Try Chrome or Edge.");
-      return;
-    }
+    const video = (containerRef.current?.querySelector("video") as PipVideo | null) ?? videoRef.current;
+    if (!video) return;
     try {
+      if (video.webkitSetPresentationMode) {
+        video.webkitSetPresentationMode("picture-in-picture");
+        return;
+      }
+      if (!video.requestPictureInPicture) return;
+      if (video.paused) await video.play();
       await video.requestPictureInPicture();
     } catch {
-      alert("Could not open Picture-in-Picture. Make sure the video is playing.");
+      // PiP can be denied by browser policy, for example before a user gesture
+      // or when the video track is no longer playing.
     }
   }, []);
 
@@ -143,96 +142,39 @@ export default function VideoOutputPanel({ isLive, onStop }: Props) {
     onStop();
   }, [exitFullscreen, onStop]);
 
-  // ── Render ────────────────────────────────────────────────────────────────
-  const isExpanded = viewMode === "expanded";
-  const isFullscreen = viewMode === "fullscreen";
-
   return (
-    <>
-      {/* Expanded desktop overlay */}
-      {isExpanded && (
-        <div className="desktop-expanded">
-          <div className="desktop-expanded-header">
-            <div className="card-label" style={{ marginBottom: 0 }}>Live output</div>
-            <button className="btn btn-secondary" style={{ padding: "7px 14px", fontSize: 12 }} onClick={toggleExpanded}>
-              Close
+    <div
+      ref={shellRef}
+      className={isFullscreen ? "viewer-wrap viewer-fullscreen" : "viewer-wrap"}
+      onClick={isFullscreen ? revealControls : undefined}
+      aria-label={isFullscreen ? "Tap to show controls" : undefined}
+    >
+      <div className="output-stage">
+        <div ref={containerRef} className="video-mount" />
+        {!hasOutput && <OutputPlaceholder isLive={isLive} />}
+        {isFullscreen && (
+          <div className={`fullscreen-controls${controlsVisible ? "" : " hidden"}`}>
+            <button className="icon-control" type="button" onClick={(e) => { e.stopPropagation(); void exitFullscreen(); }} aria-label="Exit fullscreen" title="Exit fullscreen">
+              <FullscreenExitIcon />
             </button>
-          </div>
-          <div ref={shellRef} className="output-stage" style={{ flex: 1, aspectRatio: "auto", maxHeight: "none", minHeight: 0 }}>
-            <div ref={containerRef} style={{ position: "absolute", inset: 0 }} />
-            {!hasOutput && <OutputPlaceholder isLive={isLive} />}
-          </div>
-          <div className="output-actions" style={{ paddingTop: 14 }}>
-            <button className="btn btn-secondary" onClick={enterPiP} disabled={!hasOutput}>Picture in Picture</button>
-            <button className="btn btn-danger" onClick={() => { toggleExpanded(); onStop(); }} disabled={!isLive}>Stop session</button>
-          </div>
-        </div>
-      )}
-
-      {/* Normal view + fullscreen shell */}
-      <div
-        ref={shellRef}
-        className={isFullscreen ? "mobile-fullscreen-wrap" : "viewer-wrap"}
-        onClick={isFullscreen ? revealControls : undefined}
-        aria-label={isFullscreen ? "Tap to show controls" : undefined}
-      >
-        <div className={`output-stage${isFullscreen ? "" : ""}`}>
-          <div ref={containerRef} style={{ position: "absolute", inset: 0 }} />
-          {!hasOutput && <OutputPlaceholder isLive={isLive} />}
-
-          {/* Fullscreen overlay controls */}
-          {isFullscreen && (
-            <div className={`fullscreen-controls${controlsVisible ? "" : " hidden"}`}>
-              <button
-                className="btn btn-secondary"
-                style={{ minWidth: 110 }}
-                onClick={(e) => { e.stopPropagation(); void exitFullscreen(); }}
-              >
-                Exit
-              </button>
-              <button
-                className="btn btn-danger"
-                style={{ minWidth: 110 }}
-                onClick={(e) => { e.stopPropagation(); void handleStopFromFullscreen(); }}
-              >
-                Stop
-              </button>
-            </div>
-          )}
-        </div>
-
-        {/* Normal-mode button row */}
-        {!isFullscreen && !isExpanded && (
-          <div className="output-actions">
-            <button className="btn btn-secondary" onClick={enterFullscreen} disabled={!isLive}>
-              Fullscreen
-            </button>
-            <button
-              className="btn btn-secondary"
-              style={{ display: "none" }}
-              id="btn-expand"
-              onClick={toggleExpanded}
-              disabled={!isLive}
-            >
-              Expand
-            </button>
-            <button className="btn btn-secondary" id="btn-pip" onClick={enterPiP} disabled={!hasOutput}>
-              Picture in Picture
+            <button className="icon-control icon-control-stop" type="button" onClick={(e) => { e.stopPropagation(); void handleStopFromFullscreen(); }} aria-label="Stop live session" title="Stop">
+              <StopIcon />
             </button>
           </div>
         )}
       </div>
 
-      {/* JS: show desktop-only buttons on wide screens */}
-      <style>{`
-        @media (min-width: 860px) {
-          #btn-expand { display: inline-flex !important; }
-        }
-        @media (max-width: 859px) {
-          #btn-pip { display: none !important; }
-        }
-      `}</style>
-    </>
+      {!isFullscreen && (
+        <div className="output-actions" aria-label="Video controls">
+          <button className="icon-control" type="button" onClick={() => void enterFullscreen()} disabled={!isLive} aria-label="Fullscreen" title="Fullscreen">
+            <FullscreenIcon />
+          </button>
+          <button className="icon-control" type="button" onClick={() => void enterPiP()} disabled={!hasOutput || !pipSupported} aria-label="Picture in Picture" title="Picture in Picture">
+            <PipIcon />
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -245,9 +187,20 @@ function OutputPlaceholder({ isLive }: { isLive: boolean }) {
           <circle cx="12" cy="12" r="3"/>
         </svg>
       </div>
-      <span>
-        {isLive ? "Connecting to live output…" : "Output will appear here"}
-      </span>
+      <span>{isLive ? "Connecting to live output…" : "Output will appear here"}</span>
     </div>
   );
+}
+
+function FullscreenIcon() {
+  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H3v5M16 3h5v5M3 16v5h5M21 16v5h-5" /></svg>;
+}
+function FullscreenExitIcon() {
+  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3v6H3M15 3v6h6M3 15h6v6M21 15h-6v6" /></svg>;
+}
+function PipIcon() {
+  return <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><rect x="12" y="12" width="7" height="5" rx="1" /></svg>;
+}
+function StopIcon() {
+  return <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2" /></svg>;
 }
