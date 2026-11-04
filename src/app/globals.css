@@ -262,7 +262,7 @@ button { -webkit-tap-highlight-color:transparent; }
 .control-panel:hover,.preview-panel:hover{border-color:rgba(173,194,235,.16);box-shadow:0 18px 60px rgba(0,0,0,.12)}
 .output-stage{box-shadow:inset 0 0 55px rgba(95,117,163,.035);transition:border-color .35s ease,box-shadow .45s ease}
 .preview-panel:has(.live-pill) .output-stage{border-color:rgba(110,214,160,.22);box-shadow:inset 0 0 65px rgba(110,214,160,.045),0 0 28px rgba(110,214,160,.035)}
-@keyframes obsCardShimmer{0%,55%{left:-55%;opacity:0}65%{opacity:1}100%{left:130%;opacity:0}}
+
 .session-dot{animation:dotBreath 2.8s ease-in-out infinite}
 @keyframes dotBreath{50%{opacity:.5;transform:scale(.82)}}
 @media(max-width:899px){.app-root:before,.app-root:after{width:100vw;filter:blur(75px);opacity:.14}.app-root:before{top:10%;left:-45%}.app-root:after{right:-48%;bottom:4%}.control-panel:hover,.preview-panel:hover{box-shadow:none}}

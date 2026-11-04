@@ -37,6 +37,7 @@ class FaceTimeSessionManager {
   private state: SessionState = { ...INITIAL };
   private listeners = new Set<Listener>();
   private sessionEpoch = 0;
+  private cleanupPromise: Promise<void> | null = null;
 
   subscribe(listener: Listener): () => void {
     this.listeners.add(listener);
@@ -157,6 +158,13 @@ class FaceTimeSessionManager {
   }
 
   private async cleanup(): Promise<void> {
+    // If a failure callback and a user stop/reset happen together, both callers
+    // wait for the same release operation instead of racing past manager.close().
+    if (this.cleanupPromise) {
+      await this.cleanupPromise;
+      return;
+    }
+
     const manager = this.manager;
     const localStream = this.localStream;
     // Clear the active reference first so late state callbacks cannot affect a new session.
@@ -164,16 +172,25 @@ class FaceTimeSessionManager {
     this.client = null;
     this.localStream = null;
 
-    if (manager) {
-      try { await manager.close(); } catch { /* SDK cleanup is best effort */ }
-    }
+    const cleanupTask = (async () => {
+      if (manager) {
+        try { await manager.close(); } catch { /* SDK cleanup is best effort */ }
+      }
 
-    // The SDK close() normally stops capture itself. Explicitly stop the camera
-    // track as a final safeguard so Chromium releases its WebRTC sender/capture.
+      // The SDK close() normally stops capture itself. Explicitly stop the camera
+      // track as a final safeguard so Chromium releases its WebRTC sender/capture.
+      try {
+        const track = localStream?.videoTrack as MediaStreamTrack | undefined;
+        if (track && track.readyState !== "ended") track.stop();
+      } catch { /* capture may already have been released by the SDK */ }
+    })();
+
+    this.cleanupPromise = cleanupTask;
     try {
-      const track = localStream?.videoTrack as MediaStreamTrack | undefined;
-      if (track && track.readyState !== "ended") track.stop();
-    } catch { /* capture may already have been released by the SDK */ }
+      await cleanupTask;
+    } finally {
+      if (this.cleanupPromise === cleanupTask) this.cleanupPromise = null;
+    }
   }
 
   async reset(): Promise<void> {
