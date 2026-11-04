@@ -27,6 +27,11 @@ function jsonError(message: string, status: number) {
 }
 
 export async function POST(request: NextRequest) {
+  const origin = request.headers.get("origin");
+  if (origin && origin !== new URL(request.url).origin) {
+    return jsonError("Cross-origin requests are not allowed.", 403);
+  }
+
   try {
     const { serverUrl, apiKey, apiSecret, api } = getConfig();
     const streamToken = randomBytes(32).toString("hex");
