@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { sessionManager } from "@/lib/sessionManager";
 import type { SessionState } from "@/lib/sessionManager";
 
@@ -152,7 +153,7 @@ export default function VideoOutputPanel({ isLive, onStop }: Props) {
     onStop();
   }, [exitFullscreen, onStop]);
 
-  return (
+  const viewer = (
     <div
       ref={shellRef}
       className={isFullscreen ? (isDesktop ? "viewer-wrap viewer-desktop-expanded" : "viewer-wrap viewer-fullscreen") : "viewer-wrap"}
@@ -186,6 +187,12 @@ export default function VideoOutputPanel({ isLive, onStop }: Props) {
       )}
     </div>
   );
+
+  // iOS CSS fullscreen must live under body, not inside animated/transformed app panels.
+  if (isFullscreen && !isDesktop && typeof document !== "undefined") {
+    return createPortal(viewer, document.body);
+  }
+  return viewer;
 }
 
 function OutputPlaceholder({ isLive }: { isLive: boolean }) {
