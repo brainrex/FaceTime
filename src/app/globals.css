@@ -314,3 +314,60 @@ button { -webkit-tap-highlight-color:transparent; }
 @keyframes dotBreath{50%{opacity:.5;transform:scale(.82)}}
 @media(max-width:899px){.app-root:before,.app-root:after{width:100vw;filter:blur(75px);opacity:.14}.app-root:before{top:10%;left:-45%}.app-root:after{right:-48%;bottom:4%}.control-panel:hover,.preview-panel:hover{box-shadow:none}}
 @media(prefers-reduced-motion:reduce){.app-root:before,.app-root:after,.obs-output-card:after,.session-dot{animation:none!important}}
+
+
+/* Fullscreen must escape the app's scroll container on mobile Safari. */
+.app-root { overflow: visible !important; }
+.viewer-fullscreen {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 2147483000 !important;
+  width: 100vw !important;
+  height: 100dvh !important;
+  min-height: 100dvh !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  background: #000 !important;
+  isolation: isolate;
+}
+.viewer-fullscreen .output-stage {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+}
+.viewer-fullscreen .fullscreen-controls {
+  position: absolute !important;
+  inset: auto 0 0 !important;
+  z-index: 2147483001 !important;
+  justify-content: center !important;
+  padding-bottom: max(28px, env(safe-area-inset-bottom)) !important;
+}
+.viewer-fullscreen .fullscreen-controls .icon-control:first-child { display: none !important; }
+.viewer-fullscreen .fullscreen-controls .icon-control-stop { min-width: 112px; min-height: 46px; }
+
+/* Clearly visible, continuous motion without making the interface distracting. */
+.intro h1 span {
+  display: inline-block;
+  background: linear-gradient(110deg,#dce6f8 0%,#91aee7 35%,#f1f4fb 52%,#91aee7 72%,#dce6f8 100%);
+  background-size: 220% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: titleGlowSweep 6s ease-in-out infinite;
+}
+@keyframes titleGlowSweep { 0%,100% { background-position: 100% 50%; } 50% { background-position: 0% 50%; } }
+.app-root:before { opacity: .27; animation-duration: 17s; }
+.app-root:after { opacity: .23; animation-duration: 21s; }
+.step-number { animation: stepNumberPulse 4.5s ease-in-out infinite; }
+@keyframes stepNumberPulse {
+  0%,100% { border-color: rgba(255,255,255,.08); box-shadow: 0 0 0 rgba(145,174,231,0); }
+  50% { border-color: rgba(145,174,231,.28); box-shadow: 0 0 18px rgba(145,174,231,.10); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .intro h1 span,.step-number { animation: none !important; }
+}
