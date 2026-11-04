@@ -42,6 +42,24 @@ export default function App() {
 
   const isLive = step === "live";
   const isBusy = isVerifying || isUploading || isStarting || isStopping;
+  useEffect(() => {
+    let cancelled = false;
+    const loadPermanentOutput = async () => {
+      try {
+        const response = await fetch("/api/obs/session", { cache: "no-store" });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || "Could not load the OBS link.");
+        if (!cancelled) setObsUrl(result.streamUrl);
+      } catch (loadError) {
+        if (!cancelled) setObsError(loadError instanceof Error ? loadError.message : "Could not load the OBS link.");
+      } finally {
+        if (!cancelled) setObsUrlLoading(false);
+      }
+    };
+    void loadPermanentOutput();
+    return () => { cancelled = true; };
+  }, []);
+
 
   useEffect(() => {
     const media = window.matchMedia("(min-width: 900px) and (pointer: fine)");
