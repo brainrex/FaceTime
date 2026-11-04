@@ -78,11 +78,14 @@ class FaceTimeSessionManager {
     try {
       const sdk = await import("@xmaxai/web-sdk");
       this.client = createClient(sdk, apiKey);
-      this.manager = this.client.createRealtimeManager(
+      const manager = this.client.createRealtimeManager(
         new sdk.RealtimeConfiguration({ model: sdk.RealtimeModel.x2_1 })
       );
+      this.manager = manager;
 
-      await this.manager.setStateListener((raw) => {
+      await manager.setStateListener((raw) => {
+        // Ignore delayed callbacks from a previous WebRTC manager after it has been closed.
+        if (this.manager !== manager) return;
         const state = raw as {
           connectionState?: unknown;
           reason?: { kind?: string; error?: { code?: string; message?: string } };
@@ -98,7 +101,7 @@ class FaceTimeSessionManager {
 
       this.patch({ status: "connecting" });
       const portrait = isPortrait();
-      this.localStream = await this.manager.createLocalCameraStream({
+      this.localStream = await manager.createLocalCameraStream({
         videoFormat: new sdk.RealtimeVideoFormat({
           width: portrait ? 1080 : 1920,
           height: portrait ? 1920 : 1080,
@@ -109,7 +112,7 @@ class FaceTimeSessionManager {
         enableFrameValidation: true,
       });
 
-      const remote = await this.manager.startGeneration({
+      const remote = await manager.startGeneration({
         localStream: this.localStream,
         context: new sdk.RealtimeContext({
           prompt: "视频中角色替换成参考图中角色",
@@ -134,12 +137,23 @@ class FaceTimeSessionManager {
   }
 
   private async cleanup(): Promise<void> {
-    if (this.manager) {
-      try { await this.manager.close(); } catch { /* SDK cleanup is best effort */ }
-      this.manager = null;
-    }
+    const manager = this.manager;
+    const localStream = this.localStream;
+    // Clear the active reference first so late state callbacks cannot affect a new session.
+    this.manager = null;
     this.client = null;
     this.localStream = null;
+
+    if (manager) {
+      try { await manager.close(); } catch { /* SDK cleanup is best effort */ }
+    }
+
+    // The SDK close() normally stops capture itself. Explicitly stop the camera
+    // track as a final safeguard so Chromium releases its WebRTC sender/capture.
+    try {
+      const track = localStream?.videoTrack as MediaStreamTrack | undefined;
+      if (track && track.readyState !== "ended") track.stop();
+    } catch { /* capture may already have been released by the SDK */ }
   }
 
   reset(): void {
