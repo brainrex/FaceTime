@@ -96,6 +96,9 @@ class FaceTimeSessionManager {
           const detail = state.reason?.error;
           const message = detail ? [detail.code, detail.message].filter(Boolean).join(": ") : "The live session ended unexpectedly.";
           this.patch({ status: "error", error: message, hasOutput: false, remoteTrack: null });
+          // A failed/disconnected SDK callback is asynchronous; release the peer
+          // connection and camera immediately instead of waiting for manual retry.
+          void this.cleanup();
         }
       });
 
