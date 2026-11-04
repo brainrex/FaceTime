@@ -249,7 +249,7 @@ export default function App() {
                   {isStopping ? <><span className="spinner" /> Ending session…</> : "End live session"}
                 </button>
               )}
-              <p className="privacy-note">Your API key is used only in this browser session.</p>
+              <p className="privacy-note">Your key is not saved by FaceTime. Requests are sent to Xmax.</p>
             </div>
           </aside>
 
