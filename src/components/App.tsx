@@ -312,24 +312,24 @@ export default function App() {
                   <div className="obs-output-icon" aria-hidden="true">↗</div>
                   <div>
                     <h3>OBS Browser Source</h3>
-                    <p>{obsStarting ? "Preparing your private output…" : obsUrl ? "Your generated video is ready for OBS." : "The OBS output is not connected."}</p>
+                    <p>{obsUrlLoading ? "Preparing your permanent output link…" : obsStarting ? "Connecting your live video…" : obsUrl ? "One permanent link for every live session." : "The OBS link is unavailable."}</p>
                   </div>
-                  <span className={obsUrl ? "obs-status connected" : "obs-status"}>{obsUrl ? "Ready" : obsStarting ? "Connecting" : "Offline"}</span>
+                  <span className={obsUrl ? "obs-status connected" : "obs-status"}>{obsUrl ? "Permanent" : obsUrlLoading || obsStarting ? "Loading" : "Unavailable"}</span>
                 </div>
                 {obsUrl ? (
                   <>
                     <div className="obs-url-row">
-                      <input className="obs-url-field" aria-label="Private OBS output URL" value={obsUrl} readOnly onFocus={(event) => event.currentTarget.select()} />
+                      <input className="obs-url-field" aria-label="Permanent OBS output URL" value={obsUrl} readOnly onFocus={(event) => event.currentTarget.select()} />
                       <button className="obs-copy-button" type="button" onClick={() => {
                         void navigator.clipboard.writeText(obsUrl).then(() => setObsCopied(true)).catch(() => setObsError("Copy was blocked by your browser. Select the URL and copy it manually."));
                       }}>{obsCopied ? "Copied" : "Copy URL"}</button>
                     </div>
-                    <p className="obs-help">In OBS: Sources → + → Browser → paste the URL above.</p>
+                    <p className="obs-help">Add this once in OBS: Sources → + → Browser. Keep the same URL; it waits while FaceTime is off and shows video during each live session.</p>
                   </>
                 ) : obsError ? (
                   <p className="obs-error" role="status">{obsError}</p>
                 ) : (
-                  <p className="obs-help">A private link will appear here when the output connects.</p>
+                  <p className="obs-help">{obsUrlLoading ? "Loading your permanent OBS link…" : "Could not load the permanent OBS link. Check your LiveKit settings and refresh."}</p>
                 )}
               </section>
             )}
