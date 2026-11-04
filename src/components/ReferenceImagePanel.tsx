@@ -1,122 +1,104 @@
 "use client";
 
-import { useRef, useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 interface Props {
   referenceUrl: string | null;
-  onUrlReady: (url: string | null) => void;
+  onUpload: (file: File) => Promise<string>;
+  onRemove: () => void;
   disabled?: boolean;
+  uploading?: boolean;
 }
 
-export default function ReferenceImagePanel({ referenceUrl, onUrlReady, disabled }: Props) {
-  const [objectUrl, setObjectUrl] = useState<string | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+export default function ReferenceImagePanel({ referenceUrl, onUpload, onRemove, disabled, uploading }: Props) {
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
+  const [localError, setLocalError] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+  const previewRef = useRef<string | null>(null);
 
-  const processFile = useCallback(
-    (file: File) => {
-      if (!file.type.startsWith("image/")) {
-        alert("Please choose an image file (PNG, JPG, or WebP).");
-        return;
-      }
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
-      const url = URL.createObjectURL(file);
-      setObjectUrl(url);
-      onUrlReady(url);
-    },
-    [objectUrl, onUrlReady]
-  );
+  useEffect(() => () => {
+    if (previewRef.current) URL.revokeObjectURL(previewRef.current);
+  }, []);
 
-  const handleFileChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (file) processFile(file);
-    },
-    [processFile]
-  );
+  const processFile = useCallback(async (file: File) => {
+    setLocalError("");
+    if (!file.type.startsWith("image/")) {
+      setLocalError("Choose a PNG, JPG or WebP image.");
+      return;
+    }
+    if (file.size > 15 * 1024 * 1024) {
+      setLocalError("Choose an image smaller than 15 MB.");
+      return;
+    }
+    const localPreview = URL.createObjectURL(file);
+    if (previewRef.current) URL.revokeObjectURL(previewRef.current);
+    previewRef.current = localPreview;
+    setPreviewUrl(localPreview);
+    try {
+      await onUpload(file);
+    } catch (error) {
+      setLocalError(error instanceof Error ? error.message : "Image upload failed. Please try again.");
+    }
+  }, [onUpload]);
 
-  const handleDrop = useCallback(
-    (e: React.DragEvent) => {
-      e.preventDefault();
-      setDragging(false);
-      const file = e.dataTransfer.files?.[0];
-      if (file) processFile(file);
-    },
-    [processFile]
-  );
+  const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) void processFile(file);
+    event.target.value = "";
+  };
 
-  const handleClear = useCallback(() => {
-    if (objectUrl) URL.revokeObjectURL(objectUrl);
-    setObjectUrl(null);
-    onUrlReady(null);
-    if (inputRef.current) inputRef.current.value = "";
-  }, [objectUrl, onUrlReady]);
+  const handleRemove = () => {
+    if (previewRef.current) URL.revokeObjectURL(previewRef.current);
+    previewRef.current = null;
+    setPreviewUrl(null);
+    setLocalError("");
+    onRemove();
+  };
 
-  if (referenceUrl) {
-    return (
-      <div className="ref-preview">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={referenceUrl} alt="Reference character" className="ref-thumb" />
-        <div className="ref-info">
-          <div className="ref-status">Character loaded</div>
-          <div className="ref-actions">
-            {!disabled && (
-              <>
-                <button
-                  className="ref-action-btn ref-action-replace"
-                  onClick={() => inputRef.current?.click()}
-                  type="button"
-                >
-                  Replace
-                </button>
-                <button
-                  className="ref-action-btn ref-action-remove"
-                  onClick={handleClear}
-                  type="button"
-                >
-                  Remove
-                </button>
-              </>
-            )}
-          </div>
-        </div>
-        <input
-          ref={inputRef}
-          type="file"
-          accept="image/*"
-          className="hidden"
-          onChange={handleFileChange}
-          aria-hidden="true"
-        />
-      </div>
-    );
-  }
+  const imageSrc = previewUrl ?? referenceUrl;
 
   return (
-    <>
-      <div
-        className={`dropzone${dragging ? " dragging" : ""}${disabled ? " opacity-40 pointer-events-none" : ""}`}
-        onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
-        onDragLeave={() => setDragging(false)}
-        onDrop={handleDrop}
-        onClick={() => !disabled && inputRef.current?.click()}
-        role="button"
-        tabIndex={disabled ? -1 : 0}
-        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") inputRef.current?.click(); }}
-        aria-label="Upload reference image"
-      >
-        <span className="dropzone-icon">🖼</span>
-        <p style={{ margin: "0 0 4px", fontWeight: 600 }}>Drop an image here</p>
-        <p style={{ margin: 0, fontSize: 12, color: "var(--text-3)" }}>PNG, JPG, or WebP</p>
-      </div>
-      <input
-        ref={inputRef}
-        type="file"
-        accept="image/*"
-        className="hidden"
-        onChange={handleFileChange}
-        aria-hidden="true"
-      />
-    </>
+    <div className="reference-uploader">
+      {imageSrc ? (
+        <div className="reference-preview">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={imageSrc} alt="Selected character reference" />
+          <div className="reference-preview-info">
+            <strong>{uploading ? "Uploading image…" : referenceUrl ? "Image ready" : "Preparing image"}</strong>
+            <span>{uploading ? "Securely preparing your reference" : "Ready for your live session"}</span>
+            {!disabled && !uploading && (
+              <button type="button" className="text-button" onClick={() => inputRef.current?.click()}>Replace image</button>
+            )}
+          </div>
+          {referenceUrl && <span className="image-ready-mark">✓</span>}
+          {!disabled && !uploading && (
+            <button type="button" className="remove-image" onClick={handleRemove} aria-label="Remove reference image">×</button>
+          )}
+        </div>
+      ) : (
+        <button
+          type="button"
+          className={`upload-zone${dragging ? " is-dragging" : ""}`}
+          disabled={disabled || uploading}
+          onClick={() => inputRef.current?.click()}
+          onDragOver={(event) => { event.preventDefault(); setDragging(true); }}
+          onDragLeave={() => setDragging(false)}
+          onDrop={(event) => {
+            event.preventDefault();
+            setDragging(false);
+            const file = event.dataTransfer.files?.[0];
+            if (file && !disabled) void processFile(file);
+          }}
+        >
+          <span className="upload-icon">↑</span>
+          <strong>{uploading ? "Uploading…" : "Choose an image"}</strong>
+          <span>or drag and drop it here</span>
+          <small>PNG, JPG or WebP · Up to 15 MB</small>
+        </button>
+      )}
+      {localError && <p className="upload-error" role="alert">{localError}</p>}
+      <input ref={inputRef} type="file" accept="image/png,image/jpeg,image/webp" onChange={handleChange} hidden />
+    </div>
   );
 }
