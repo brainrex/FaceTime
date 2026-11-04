@@ -28,10 +28,10 @@ async function prepareUploadImage(file: File): Promise<File> {
     if (!context) { bitmap.close(); return file; }
     context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
     bitmap.close();
-    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.88));
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/webp", 0.88));
     if (!blob || blob.size >= file.size) return file;
     const baseName = file.name.replace(/\.[^.]+$/, "") || "reference";
-    return new File([blob], `${baseName}.jpg`, { type: "image/jpeg", lastModified: Date.now() });
+    return new File([blob], `${baseName}.webp`, { type: "image/webp", lastModified: Date.now() });
   } catch {
     return file;
   }
