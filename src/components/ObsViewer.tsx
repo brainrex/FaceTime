@@ -25,7 +25,7 @@ export default function ObsViewer({ token }: { token: string }) {
         const credentials = await response.json() as { serverUrl: string; participantToken: string };
         if (disposed || !mountRef.current) return;
 
-        room = new Room({ adaptiveStream: true, dynacast: false });
+        room = new Room({ adaptiveStream: false, dynacast: false });
         const activeRoom = room;
 
         activeRoom.on(RoomEvent.TrackSubscribed, (track) => {
@@ -38,6 +38,7 @@ export default function ObsViewer({ token }: { token: string }) {
           video.style.width = "100%";
           video.style.height = "100%";
           video.style.objectFit = "contain";
+          video.setAttribute("crossorigin", "anonymous");
           video.style.background = "#000";
           mountRef.current.replaceChildren(video);
           void video.play().catch(() => undefined);
