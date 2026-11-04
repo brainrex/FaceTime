@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import { createPortal } from "react-dom";
 import { sessionManager } from "@/lib/sessionManager";
 import type { SessionState } from "@/lib/sessionManager";
 
@@ -17,16 +16,13 @@ type PipVideo = HTMLVideoElement & {
 
 export default function VideoOutputPanel({ isLive, onStop }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const shellRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<PipVideo | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const viewRef = useRef<any>(null);
   const [hasOutput, setHasOutput] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [controlsVisible, setControlsVisible] = useState(true);
-  const [pipSupported, setPipSupported] = useState(false);
   const [isDesktop, setIsDesktop] = useState(false);
-  const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [pipSupported, setPipSupported] = useState(false);
 
   useEffect(() => {
     const media = window.matchMedia("(min-width: 900px) and (pointer: fine)");
@@ -48,81 +44,82 @@ export default function VideoOutputPanel({ isLive, onStop }: Props) {
     return () => observer.disconnect();
   }, [hasOutput]);
 
-  useEffect(() => {
-    const onFullscreenChange = () => {
-      if (!document.fullscreenElement) setIsFullscreen(false);
-    };
-    document.addEventListener("fullscreenchange", onFullscreenChange);
-    return () => document.removeEventListener("fullscreenchange", onFullscreenChange);
-  }, []);
-
+  // Keep the Xmax view attached to one stable DOM node. Fullscreen only changes
+  // CSS on its wrapper; it never portals or reparents the WebRTC video.
   useEffect(() => {
     let alive = true;
-    const unsub = sessionManager.subscribe(async (state: SessionState) => {
-      if (!alive || !containerRef.current) return;
+    let revision = 0;
+
+    const unsubscribe = sessionManager.subscribe((state: SessionState) => {
+      const currentRevision = ++revision;
+      if (!containerRef.current) return;
+
       if (state.status !== "live" || !state.remoteTrack) {
         setHasOutput(false);
-        if (viewRef.current) {
+        const existingView = viewRef.current;
+        viewRef.current = null;
+        if (existingView) {
           try {
-            if (typeof viewRef.current.detach === "function") viewRef.current.detach();
-          } catch { /* ignore */ }
-          viewRef.current = null;
+            if (typeof existingView.detach === "function") existingView.detach();
+          } catch { /* The SDK may already have detached the view. */ }
         }
         return;
       }
-      try {
-        const { XmaxRealtimeVideoView, VideoContentMode } = await import("@xmaxai/web-sdk");
-        if (!alive || !containerRef.current) return;
-        if (!viewRef.current) {
-          const view = new XmaxRealtimeVideoView();
-          view.element.style.width = "100%";
-          view.element.style.height = "100%";
-          view.element.style.display = "block";
-          view.attach(containerRef.current);
-          view.videoContentMode = VideoContentMode.fill;
-          viewRef.current = view;
+
+      void (async () => {
+        try {
+          const { XmaxRealtimeVideoView, VideoContentMode } = await import("@xmaxai/web-sdk");
+          if (!alive || currentRevision !== revision || !containerRef.current) return;
+
+          let view = viewRef.current;
+          if (!view) {
+            view = new XmaxRealtimeVideoView();
+            view.element.style.width = "100%";
+            view.element.style.height = "100%";
+            view.element.style.display = "block";
+            view.attach(containerRef.current);
+            view.videoContentMode = VideoContentMode.fill;
+            viewRef.current = view;
+          }
+
+          view.track = state.remoteTrack;
+          if (alive && currentRevision === revision) setHasOutput(true);
+        } catch {
+          if (alive && currentRevision === revision) setHasOutput(false);
         }
-        viewRef.current.track = state.remoteTrack;
-        setHasOutput(true);
-      } catch {
-        setHasOutput(false);
-      }
+      })();
     });
+
     return () => {
       alive = false;
-      unsub();
-      if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+      revision += 1;
+      unsubscribe();
+      const existingView = viewRef.current;
+      viewRef.current = null;
+      if (existingView) {
+        try {
+          if (typeof existingView.detach === "function") existingView.detach();
+        } catch { /* Best-effort SDK cleanup. */ }
+      }
     };
   }, []);
 
-  const scheduleHideControls = useCallback(() => {
-    if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
-    hideTimerRef.current = setTimeout(() => setControlsVisible(false), 5000);
-  }, []);
-
-  const revealControls = useCallback(() => {
-    setControlsVisible(true);
-    scheduleHideControls();
-  }, [scheduleHideControls]);
-
-  const enterFullscreen = useCallback(async () => {
-    if (!shellRef.current) return;
+  const enterFullscreen = useCallback(() => {
+    // In-page expanded view, not the browser Fullscreen API. Browser tabs,
+    // toolbars and the operating-system taskbar remain available.
     setIsFullscreen(true);
-    setControlsVisible(true);
-    scheduleHideControls();
-    // Mobile fullscreen uses a body-level portal and fixed viewport sizing.
-    // Avoid native requestFullscreen here: reparenting a native fullscreen
-    // element can cancel fullscreen in some mobile browsers.
-  }, [scheduleHideControls]);
-
-  const exitFullscreen = useCallback(async () => {
-    if (document.fullscreenElement) {
-      try { await document.exitFullscreen(); } catch { /* CSS fallback below */ }
-    }
-    setIsFullscreen(false);
-    setControlsVisible(true);
-    if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
   }, []);
+
+  const exitFullscreen = useCallback(() => setIsFullscreen(false), []);
+
+  useEffect(() => {
+    if (!isFullscreen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") exitFullscreen();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [isFullscreen, exitFullscreen]);
 
   const enterPiP = useCallback(async () => {
     const video = (containerRef.current?.querySelector("video") as PipVideo | null) ?? videoRef.current;
@@ -136,56 +133,49 @@ export default function VideoOutputPanel({ isLive, onStop }: Props) {
       if (video.paused) await video.play();
       await video.requestPictureInPicture();
     } catch {
-      // PiP can be denied by browser policy, for example before a user gesture
-      // or when the video track is no longer playing.
+      // Picture-in-Picture can be blocked by browser policy or unsupported tracks.
     }
   }, []);
 
-  const handleStopFromFullscreen = useCallback(async () => {
-    await exitFullscreen();
+  const handleStopFromFullscreen = useCallback(() => {
+    setIsFullscreen(false);
     onStop();
-  }, [exitFullscreen, onStop]);
+  }, [onStop]);
 
-  const viewer = (
-    <div
-      ref={shellRef}
-      className={isFullscreen ? (isDesktop ? "viewer-wrap viewer-desktop-expanded" : "viewer-wrap viewer-fullscreen") : "viewer-wrap"}
-      onClick={isFullscreen ? revealControls : undefined}
-      aria-label={isFullscreen ? "Tap to show controls" : undefined}
-    >
+  const viewerClass = isFullscreen
+    ? isDesktop ? "viewer-wrap viewer-desktop-expanded" : "viewer-wrap viewer-fullscreen"
+    : "viewer-wrap";
+
+  return (
+    <div className={viewerClass} aria-label={isFullscreen ? "Expanded live video preview" : "Live video preview"}>
       <div className="output-stage">
         <div ref={containerRef} className="video-mount" />
         {!hasOutput && <OutputPlaceholder isLive={isLive} />}
-        {isFullscreen && (
-          <div className={`fullscreen-controls${controlsVisible ? "" : " hidden"}`}>
-            <button className="icon-control" type="button" onClick={(e) => { e.stopPropagation(); void exitFullscreen(); }} aria-label="Exit fullscreen" title="Exit fullscreen">
-              <FullscreenExitIcon />
-            </button>
-            <button className="icon-control icon-control-stop" type="button" onClick={(e) => { e.stopPropagation(); void handleStopFromFullscreen(); }} aria-label="Stop live session" title="Stop">
-              <StopIcon />
-            </button>
-          </div>
-        )}
       </div>
 
-      {!isFullscreen && (
+      {isFullscreen ? (
+        <div className="fullscreen-controls" aria-label="Expanded video controls">
+          <button className="icon-control" type="button" onClick={exitFullscreen} aria-label="Exit expanded view" title="Exit expanded view">
+            <FullscreenExitIcon />
+          </button>
+          <button className="icon-control icon-control-stop" type="button" onClick={handleStopFromFullscreen} aria-label="Stop live session" title="Stop live session">
+            <StopIcon />
+          </button>
+        </div>
+      ) : (
         <div className="output-actions" aria-label="Video controls">
-          <button className="icon-control" type="button" onClick={() => void enterFullscreen()} disabled={!isLive} aria-label="Fullscreen" title="Fullscreen">
+          <button className="icon-control" type="button" onClick={enterFullscreen} disabled={!isLive} aria-label="Expand video" title="Expand video">
             <FullscreenIcon />
           </button>
-          <button className="icon-control" type="button" onClick={() => void enterPiP()} disabled={!hasOutput || !pipSupported} aria-label="Picture in Picture" title="Picture in Picture">
-            <PipIcon />
-          </button>
+          {isDesktop && (
+            <button className="icon-control" type="button" onClick={() => void enterPiP()} disabled={!hasOutput || !pipSupported} aria-label="Picture in Picture" title="Picture in Picture">
+              <PipIcon />
+            </button>
+          )}
         </div>
       )}
     </div>
   );
-
-  // iOS CSS fullscreen must live under body, not inside animated/transformed app panels.
-  if (isFullscreen && !isDesktop && typeof document !== "undefined") {
-    return createPortal(viewer, document.body);
-  }
-  return viewer;
 }
 
 function OutputPlaceholder({ isLive }: { isLive: boolean }) {

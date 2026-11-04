@@ -36,6 +36,7 @@ class FaceTimeSessionManager {
   private localStream: LocalStream | null = null;
   private state: SessionState = { ...INITIAL };
   private listeners = new Set<Listener>();
+  private sessionEpoch = 0;
 
   subscribe(listener: Listener): () => void {
     this.listeners.add(listener);
@@ -73,6 +74,7 @@ class FaceTimeSessionManager {
       throw new Error("A session is already in progress.");
     }
 
+    const epoch = ++this.sessionEpoch;
     this.patch({ status: "starting", error: null, remoteTrack: null, hasOutput: false });
 
     try {
@@ -85,7 +87,7 @@ class FaceTimeSessionManager {
 
       await manager.setStateListener((raw) => {
         // Ignore delayed callbacks from a previous WebRTC manager after it has been closed.
-        if (this.manager !== manager) return;
+        if (this.manager !== manager || epoch !== this.sessionEpoch) return;
         const state = raw as {
           connectionState?: unknown;
           reason?: { kind?: string; error?: { code?: string; message?: string } };
@@ -93,6 +95,7 @@ class FaceTimeSessionManager {
         const connectionState = String(state.connectionState ?? "unknown").toLowerCase();
         const failed = state.reason?.kind === "failure" || ["failed", "disconnected", "closed"].includes(connectionState);
         if (failed && ["starting", "connecting", "live"].includes(this.state.status)) {
+          this.sessionEpoch += 1;
           const detail = state.reason?.error;
           const message = detail ? [detail.code, detail.message].filter(Boolean).join(": ") : "The live session ended unexpectedly.";
           this.patch({ status: "error", error: message, hasOutput: false, remoteTrack: null });
@@ -102,9 +105,10 @@ class FaceTimeSessionManager {
         }
       });
 
+      if (epoch !== this.sessionEpoch || this.manager !== manager) return;
       this.patch({ status: "connecting" });
       const portrait = isPortrait();
-      this.localStream = await manager.createLocalCameraStream({
+      const localStream = await manager.createLocalCameraStream({
         videoFormat: new sdk.RealtimeVideoFormat({
           width: portrait ? 1080 : 1920,
           height: portrait ? 1920 : 1080,
@@ -115,16 +119,27 @@ class FaceTimeSessionManager {
         enableFrameValidation: true,
       });
 
+      if (epoch !== this.sessionEpoch || this.manager !== manager) {
+        try {
+          const track = localStream.videoTrack as MediaStreamTrack | undefined;
+          if (track && track.readyState !== "ended") track.stop();
+        } catch { /* The camera may already have been released. */ }
+        return;
+      }
+      this.localStream = localStream;
+
       const remote = await manager.startGeneration({
-        localStream: this.localStream,
+        localStream,
         context: new sdk.RealtimeContext({
           prompt: "视频中角色替换成参考图中角色",
           referencePath: referenceUrl,
         }),
       });
 
+      if (epoch !== this.sessionEpoch || this.manager !== manager) return;
       this.patch({ status: "live", remoteTrack: remote.videoTrack as RemoteTrack, hasOutput: true });
     } catch (error) {
+      if (epoch !== this.sessionEpoch) return;
       const message = error instanceof Error ? error.message : String(error);
       this.patch({ status: "error", error: message, hasOutput: false, remoteTrack: null });
       await this.cleanup();
@@ -133,6 +148,7 @@ class FaceTimeSessionManager {
   }
 
   async stopSession(): Promise<void> {
+    this.sessionEpoch += 1;
     if (this.state.status !== "idle" && this.state.status !== "stopped") {
       this.patch({ status: "stopping", hasOutput: false, remoteTrack: null });
     }
@@ -161,7 +177,8 @@ class FaceTimeSessionManager {
   }
 
   async reset(): Promise<void> {
-    // Never reset the UI while an old peer connection/camera capture is still alive.
+    // Invalidate any pending start before releasing the previous peer connection.
+    this.sessionEpoch += 1;
     await this.cleanup();
     this.patch({ ...INITIAL });
   }

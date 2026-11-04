@@ -227,7 +227,7 @@ button { -webkit-tap-highlight-color:transparent; }
 }
 
 
-/* Subtle motion and OBS output */
+
 @keyframes faceTimeRiseIn {
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
@@ -237,47 +237,6 @@ button { -webkit-tap-highlight-color:transparent; }
 .control-panel { animation: faceTimeRiseIn .65s .12s cubic-bezier(.2,.7,.2,1) both; }
 .preview-panel { animation: faceTimeRiseIn .65s .2s cubic-bezier(.2,.7,.2,1) both; }
 .button:not(:disabled):hover { transform: translateY(-1px); }
-.obs-output-card {
-  margin-top: 18px;
-  padding: 14px;
-  border: 1px solid rgba(160,184,230,.17);
-  border-radius: 13px;
-  background: linear-gradient(135deg,rgba(133,158,209,.075),rgba(255,255,255,.018));
-  animation: faceTimeRiseIn .35s ease both;
-}
-.obs-output-heading { display:flex; align-items:center; gap:10px; min-width:0; }
-.obs-output-icon {
-  width:32px; height:32px; flex:none; display:grid; place-items:center;
-  border:1px solid var(--line-strong); border-radius:10px;
-  color:#dce6ff; background:rgba(255,255,255,.035); font-size:17px;
-}
-.obs-output-heading h3 { margin:0; color:var(--text); font-size:12px; font-weight:650; }
-.obs-output-heading p { margin:4px 0 0; color:var(--muted); font-size:10px; line-height:1.4; }
-.obs-status {
-  margin-left:auto; padding:5px 8px; flex:none; border:1px solid var(--line);
-  border-radius:999px; color:var(--muted); font-size:9px; font-weight:650;
-}
-.obs-status.connected { color:var(--green); border-color:rgba(110,214,160,.22); background:rgba(110,214,160,.06); }
-.obs-url-row { display:flex; gap:7px; margin-top:13px; }
-.obs-url-field {
-  flex:1; min-width:0; height:38px; padding:0 10px;
-  border:1px solid var(--line-strong); border-radius:9px;
-  color:#dce3f1; background:#090b10; font-size:10px;
-}
-.obs-copy-button {
-  min-width:83px; height:38px; padding:0 11px; border:1px solid rgba(190,207,241,.22);
-  border-radius:9px; color:#101522; background:#dce6f8; font-size:10px; font-weight:650; cursor:pointer;
-  transition:transform .16s,background .16s;
-}
-.obs-copy-button:hover { background:#f0f4fc; transform:translateY(-1px); }
-.obs-help,.obs-error { margin:10px 0 0; color:var(--subtle); font-size:10px; line-height:1.5; }
-.obs-error { color:#ffaaaa; }
-.obs-viewer-root {
-  position:fixed; inset:0; width:100vw; height:100dvh; overflow:hidden;
-  background:#000;
-}
-.obs-viewer-video { position:absolute; inset:0; display:grid; place-items:center; background:#000; }
-.obs-viewer-video video { display:block; max-width:100%; max-height:100%; }
 .viewer-desktop-expanded {
   position:fixed; inset:14px; z-index:99999; width:auto; height:auto; min-height:0;
   padding:12px; border:1px solid rgba(255,255,255,.13); border-radius:16px;
@@ -289,10 +248,6 @@ button { -webkit-tap-highlight-color:transparent; }
 .viewer-desktop-expanded .output-stage video { object-fit:contain; }
 @media (max-width:899px) {
   .output-actions .icon-control:nth-child(2) { display:none; }
-}
-@media (prefers-reduced-motion:reduce) {
-  .site-header,.intro,.control-panel,.preview-panel,.obs-output-card { animation:none!important; }
-  .button:not(:disabled):hover,.obs-copy-button:hover { transform:none!important; }
 }
 
 
@@ -307,13 +262,10 @@ button { -webkit-tap-highlight-color:transparent; }
 .control-panel:hover,.preview-panel:hover{border-color:rgba(173,194,235,.16);box-shadow:0 18px 60px rgba(0,0,0,.12)}
 .output-stage{box-shadow:inset 0 0 55px rgba(95,117,163,.035);transition:border-color .35s ease,box-shadow .45s ease}
 .preview-panel:has(.live-pill) .output-stage{border-color:rgba(110,214,160,.22);box-shadow:inset 0 0 65px rgba(110,214,160,.045),0 0 28px rgba(110,214,160,.035)}
-.obs-output-card{position:relative;overflow:hidden}
-.obs-output-card:after{content:"";position:absolute;top:-60%;left:-55%;width:35%;height:220%;transform:rotate(24deg);background:linear-gradient(90deg,transparent,rgba(190,207,241,.045),transparent);animation:obsCardShimmer 9s ease-in-out infinite;pointer-events:none}
 @keyframes obsCardShimmer{0%,55%{left:-55%;opacity:0}65%{opacity:1}100%{left:130%;opacity:0}}
 .session-dot{animation:dotBreath 2.8s ease-in-out infinite}
 @keyframes dotBreath{50%{opacity:.5;transform:scale(.82)}}
 @media(max-width:899px){.app-root:before,.app-root:after{width:100vw;filter:blur(75px);opacity:.14}.app-root:before{top:10%;left:-45%}.app-root:after{right:-48%;bottom:4%}.control-panel:hover,.preview-panel:hover{box-shadow:none}}
-@media(prefers-reduced-motion:reduce){.app-root:before,.app-root:after,.obs-output-card:after,.session-dot{animation:none!important}}
 
 
 /* Fullscreen must escape the app's scroll container on mobile Safari. */
@@ -441,6 +393,103 @@ body:has(.viewer-fullscreen) { overflow: hidden !important; }
   50% { box-shadow: 0 0 18px rgba(110,214,160,.18); }
 }
 @media (prefers-reduced-motion: reduce) {
+  .preview-panel:has(.live-pill) .output-stage,
+  .preview-panel:has(.live-pill) .output-stage::after,
+  .preview-panel:has(.live-pill) .live-pill { animation: none !important; }
+}
+
+
+/* Keep ambient motion above the app background and below the interface. */
+.app-root { position: relative; isolation: isolate; overflow: visible !important; }
+.app-root::before, .app-root::after { z-index: 0 !important; }
+.page-wrap { position: relative; z-index: 1; }
+
+/* Expanded preview is in-page, so browser chrome and the OS taskbar stay visible.
+   The Xmax video mount remains in its original DOM position to preserve playback. */
+body:has(.viewer-fullscreen), body:has(.viewer-desktop-expanded) { overflow: hidden !important; }
+body:has(.viewer-fullscreen) .app-root,
+body:has(.viewer-fullscreen) .page-wrap,
+body:has(.viewer-fullscreen) .workspace,
+body:has(.viewer-fullscreen) .preview-panel,
+body:has(.viewer-desktop-expanded) .app-root,
+body:has(.viewer-desktop-expanded) .page-wrap,
+body:has(.viewer-desktop-expanded) .workspace,
+body:has(.viewer-desktop-expanded) .preview-panel {
+  transform: none !important; filter: none !important; perspective: none !important;
+  contain: none !important; animation: none !important;
+}
+.viewer-wrap.viewer-fullscreen, .viewer-wrap.viewer-desktop-expanded {
+  position: fixed !important; inset: 0 !important; z-index: 2147483647 !important;
+  display: flex !important; flex-direction: column !important;
+  width: 100vw !important; height: 100vh !important; height: 100dvh !important;
+  min-height: 0 !important; margin: 0 !important; padding: 0 !important;
+  overflow: hidden !important; border: 0 !important; border-radius: 0 !important;
+  background: #000 !important; isolation: isolate;
+}
+.viewer-wrap.viewer-fullscreen .output-stage,
+.viewer-wrap.viewer-desktop-expanded .output-stage {
+  position: relative !important; inset: auto !important; flex: 1 1 auto !important;
+  width: 100% !important; height: auto !important; min-height: 0 !important;
+  overflow: hidden !important; border: 0 !important; border-radius: 0 !important;
+}
+.viewer-wrap.viewer-fullscreen .video-mount,
+.viewer-wrap.viewer-desktop-expanded .video-mount { position: absolute !important; inset: 0 !important; }
+.viewer-wrap.viewer-fullscreen .fullscreen-controls,
+.viewer-wrap.viewer-desktop-expanded .fullscreen-controls {
+  position: relative !important; inset: auto !important; z-index: 2147483647 !important;
+  display: flex !important; flex: 0 0 auto !important; align-items: center !important;
+  justify-content: center !important; gap: 12px !important;
+  padding: 12px 16px max(12px, env(safe-area-inset-bottom)) !important;
+  background: #090a0d !important;
+}
+.viewer-wrap.viewer-fullscreen .fullscreen-controls .icon-control,
+.viewer-wrap.viewer-desktop-expanded .fullscreen-controls .icon-control {
+  width: 46px; height: 46px; min-height: 46px;
+}
+.viewer-wrap.viewer-fullscreen .fullscreen-controls .icon-control-stop,
+.viewer-wrap.viewer-desktop-expanded .fullscreen-controls .icon-control-stop {
+  color: #ffc2c2; border-color: rgba(255,133,133,.35);
+}
+@media (min-width: 900px) {
+  .viewer-wrap.viewer-desktop-expanded .output-stage video { object-fit: contain; }
+}
+@media (max-width: 899px) {
+  .viewer-wrap.viewer-fullscreen .fullscreen-controls {
+    padding-bottom: max(16px, env(safe-area-inset-bottom)) !important;
+  }
+}
+
+/* Clearly visible continuous motion: ambient light, title shimmer and live pulse. */
+.app-root::before { opacity: .27; animation: ambientDriftOne 17s ease-in-out infinite alternate; }
+.app-root::after { opacity: .23; animation: ambientDriftTwo 21s ease-in-out infinite alternate; }
+.intro h1 span {
+  display: inline-block;
+  background: linear-gradient(110deg,#dce6f8 0%,#91aee7 35%,#f1f4fb 52%,#91aee7 72%,#dce6f8 100%);
+  background-size: 220% 100%; -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent; animation: titleGlowSweep 6s ease-in-out infinite;
+}
+@keyframes titleGlowSweep { 0%,100% { background-position: 100% 50%; } 50% { background-position: 0% 50%; } }
+.step-number { animation: stepNumberPulse 4.5s ease-in-out infinite; }
+@keyframes stepNumberPulse {
+  0%,100% { border-color: rgba(255,255,255,.08); box-shadow: 0 0 0 rgba(145,174,231,0); }
+  50% { border-color: rgba(145,174,231,.28); box-shadow: 0 0 18px rgba(145,174,231,.10); }
+}
+.preview-panel:has(.live-pill) .output-stage { animation: liveStageBreathe 2.6s ease-in-out infinite; }
+.preview-panel:has(.live-pill) .output-stage::after {
+  content: ""; position: absolute; z-index: 12; inset: 0;
+  border: 1px solid rgba(110,214,160,.42); border-radius: inherit;
+  box-shadow: inset 0 0 34px rgba(110,214,160,.09), 0 0 24px rgba(110,214,160,.12);
+  pointer-events: none; animation: liveFramePulse 2.2s ease-in-out infinite;
+}
+.preview-panel:has(.live-pill) .live-pill { animation: livePillGlow 1.8s ease-in-out infinite; }
+@keyframes liveStageBreathe {
+  0%,100% { box-shadow: inset 0 0 25px rgba(110,214,160,.035), 0 0 8px rgba(110,214,160,.025); }
+  50% { box-shadow: inset 0 0 55px rgba(110,214,160,.09), 0 0 30px rgba(110,214,160,.10); }
+}
+@keyframes liveFramePulse { 0%,100% { opacity: .48; } 50% { opacity: 1; } }
+@keyframes livePillGlow { 0%,100% { box-shadow: 0 0 0 rgba(110,214,160,0); } 50% { box-shadow: 0 0 18px rgba(110,214,160,.18); } }
+@media (prefers-reduced-motion: reduce) {
+  .app-root::before, .app-root::after, .intro h1 span, .step-number,
   .preview-panel:has(.live-pill) .output-stage,
   .preview-panel:has(.live-pill) .output-stage::after,
   .preview-panel:has(.live-pill) .live-pill { animation: none !important; }
