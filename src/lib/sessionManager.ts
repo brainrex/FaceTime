@@ -1,0 +1,250 @@
+"use client";
+
+type SDK = typeof import("@xmaxai/web-sdk");
+type Client = InstanceType<SDK["XmaxClient"]>;
+type Manager = ReturnType<Client["createRealtimeManager"]>;
+type LocalStream = Awaited<ReturnType<Manager["createLocalCameraStream"]>>;
+type RemoteTrack = Awaited<ReturnType<Manager["startGeneration"]>>["videoTrack"];
+
+export type SessionStatus = "idle" | "starting" | "connecting" | "live" | "stopping" | "error" | "stopped";
+
+export interface SessionState {
+  status: SessionStatus;
+  error: string | null;
+  errorCode: string | null;
+  remoteTrack: RemoteTrack | null;
+  hasOutput: boolean;
+}
+
+type Listener = (state: SessionState) => void;
+
+const INITIAL: SessionState = { status: "idle", error: null, errorCode: null, remoteTrack: null, hasOutput: false };
+
+function isPortrait(): boolean {
+  return typeof window === "undefined" || window.innerHeight >= window.innerWidth;
+}
+
+// Maps a getUserMedia / camera-stream failure to a stable code so the UI can
+// show friendly copy instead of parsing raw DOMException / SDK message text.
+export function cameraErrorCode(error: unknown): string | null {
+  const name = error instanceof DOMException ? error.name : (error as { name?: string } | undefined)?.name;
+  switch (name) {
+    case "NotAllowedError":
+    case "SecurityError":
+      return "camera_permission_denied";
+    case "NotFoundError":
+    case "OverconstrainedError":
+      return "camera_not_found";
+    case "NotReadableError":
+      return "camera_in_use";
+    case "AbortError":
+      return "camera_aborted";
+    default:
+      return null;
+  }
+}
+
+let sdkPromise: Promise<SDK> | null = null;
+function loadSdk(): Promise<SDK> {
+  if (!sdkPromise) sdkPromise = import("@xmaxai/web-sdk");
+  return sdkPromise;
+}
+
+class FaceTimeSessionManager {
+  private client: Client | null = null;
+  private cachedApiKey: string | null = null;
+  private manager: Manager | null = null;
+  private localStream: LocalStream | null = null;
+  private state: SessionState = { ...INITIAL };
+  private listeners = new Set<Listener>();
+  private sessionEpoch = 0;
+  private cleanupPromise: Promise<void> | null = null;
+
+  subscribe(listener: Listener): () => void {
+    this.listeners.add(listener);
+    listener(this.state);
+    return () => { this.listeners.delete(listener); };
+  }
+
+  private patch(changes: Partial<SessionState>): void {
+    this.state = { ...this.state, ...changes };
+    this.listeners.forEach((listener) => listener(this.state));
+  }
+
+  getState(): SessionState { return this.state; }
+
+  // Reuses the previous client/SDK instance when the API key has not changed,
+  // instead of constructing a brand-new client on every verify/upload call.
+  private async getClient(apiKey: string): Promise<{ sdk: SDK; client: Client }> {
+    const sdk = await loadSdk();
+    if (this.client && this.cachedApiKey === apiKey) {
+      return { sdk, client: this.client };
+    }
+    const client = new sdk.XmaxClient(new sdk.XmaxConfiguration({
+      apiKey,
+      environment: sdk.XmaxEnvironment.global,
+    }));
+    this.client = client;
+    this.cachedApiKey = apiKey;
+    return { sdk, client };
+  }
+
+  async verifyApiKey(apiKey: string): Promise<number> {
+    const { client } = await this.getClient(apiKey);
+    const balance = await client.getCreditBalance();
+    return balance.currentBalance;
+  }
+
+  async uploadReferenceImage(apiKey: string, file: File): Promise<string> {
+    const { client } = await this.getClient(apiKey);
+    const storage = client.createStorageService();
+    const uploaded = await storage.uploadImage({ data: file, fileName: file.name });
+    if (!uploaded.url || typeof uploaded.url !== "string") {
+      throw new Error("The image service did not return a usable image URL. Please try again.");
+    }
+    return uploaded.url;
+  }
+
+  async startSession(apiKey: string, referenceUrl: string, useFrontCamera = true): Promise<void> {
+    if (!["idle", "stopped", "error"].includes(this.state.status)) {
+      throw new Error("A session is already in progress.");
+    }
+
+    const epoch = ++this.sessionEpoch;
+    this.patch({ status: "starting", error: null, errorCode: null, remoteTrack: null, hasOutput: false });
+
+    try {
+      const { sdk, client } = await this.getClient(apiKey);
+      const manager = client.createRealtimeManager(
+        new sdk.RealtimeConfiguration({ model: sdk.RealtimeModel.x2_1 })
+      );
+      this.manager = manager;
+
+      await manager.setStateListener((raw) => {
+        // Ignore delayed callbacks from a previous WebRTC manager after it has been closed.
+        if (this.manager !== manager || epoch !== this.sessionEpoch) return;
+        const state = raw as {
+          connectionState?: unknown;
+          reason?: { kind?: string; error?: { code?: string; message?: string } };
+        };
+        const connectionState = String(state.connectionState ?? "unknown").toLowerCase();
+        const failed = state.reason?.kind === "failure" || ["failed", "disconnected", "closed"].includes(connectionState);
+        if (failed && ["starting", "connecting", "live"].includes(this.state.status)) {
+          this.sessionEpoch += 1;
+          const detail = state.reason?.error;
+          const message = detail ? [detail.code, detail.message].filter(Boolean).join(": ") : "The live session ended unexpectedly.";
+          this.patch({ status: "error", error: message, errorCode: detail?.code ?? null, hasOutput: false, remoteTrack: null });
+          // A failed/disconnected SDK callback is asynchronous; release the peer
+          // connection and camera immediately instead of waiting for manual retry.
+          void this.cleanup();
+        }
+      });
+
+      if (epoch !== this.sessionEpoch || this.manager !== manager) return;
+      this.patch({ status: "connecting" });
+      const portrait = isPortrait();
+
+      let localStream: LocalStream;
+      try {
+        localStream = await manager.createLocalCameraStream({
+          videoFormat: new sdk.RealtimeVideoFormat({
+            width: portrait ? 1080 : 1920,
+            height: portrait ? 1920 : 1080,
+            fps: 30,
+          }),
+          position: useFrontCamera ? sdk.CameraPosition.front : sdk.CameraPosition.back,
+          useMicrophone: false,
+          enableFrameValidation: true,
+        });
+      } catch (camError) {
+        const code = cameraErrorCode(camError);
+        if (code) {
+          const err = new Error(camError instanceof Error ? camError.message : String(camError));
+          (err as Error & { code?: string }).code = code;
+          throw err;
+        }
+        throw camError;
+      }
+
+      if (epoch !== this.sessionEpoch || this.manager !== manager) {
+        try {
+          const track = localStream.videoTrack as MediaStreamTrack | undefined;
+          if (track && track.readyState !== "ended") track.stop();
+        } catch { /* The camera may already have been released. */ }
+        return;
+      }
+      this.localStream = localStream;
+
+      const remote = await manager.startGeneration({
+        localStream,
+        context: new sdk.RealtimeContext({
+          prompt: "视频中角色替换成参考图中角色",
+          referencePath: referenceUrl,
+        }),
+      });
+
+      if (epoch !== this.sessionEpoch || this.manager !== manager) return;
+      this.patch({ status: "live", remoteTrack: remote.videoTrack as RemoteTrack, hasOutput: true });
+    } catch (error) {
+      if (epoch !== this.sessionEpoch) return;
+      const message = error instanceof Error ? error.message : String(error);
+      const code = (error as Error & { code?: string } | undefined)?.code ?? null;
+      this.patch({ status: "error", error: message, errorCode: code, remoteTrack: null, hasOutput: false });
+      await this.cleanup();
+      throw error;
+    }
+  }
+
+  async stopSession(): Promise<void> {
+    this.sessionEpoch += 1;
+    if (this.state.status !== "idle" && this.state.status !== "stopped") {
+      this.patch({ status: "stopping", hasOutput: false, remoteTrack: null });
+    }
+    await this.cleanup();
+    this.patch({ status: "stopped", error: null, errorCode: null, remoteTrack: null, hasOutput: false });
+  }
+
+  private async cleanup(): Promise<void> {
+    // If a failure callback and a user stop/reset happen together, both callers
+    // wait for the same release operation instead of racing past manager.close().
+    if (this.cleanupPromise) {
+      await this.cleanupPromise;
+      return;
+    }
+
+    const manager = this.manager;
+    const localStream = this.localStream;
+    // Clear the active reference first so late state callbacks cannot affect a new session.
+    this.manager = null;
+    this.localStream = null;
+
+    const cleanupTask = (async () => {
+      if (manager) {
+        try { await manager.close(); } catch { /* SDK cleanup is best effort */ }
+      }
+
+      // The SDK close() normally stops capture itself. Explicitly stop the camera
+      // track as a final safeguard so Chromium releases its WebRTC sender/capture.
+      try {
+        const track = localStream?.videoTrack as MediaStreamTrack | undefined;
+        if (track && track.readyState !== "ended") track.stop();
+      } catch { /* capture may already have been released by the SDK */ }
+    })();
+
+    this.cleanupPromise = cleanupTask;
+    try {
+      await cleanupTask;
+    } finally {
+      if (this.cleanupPromise === cleanupTask) this.cleanupPromise = null;
+    }
+  }
+
+  async reset(): Promise<void> {
+    // Invalidate any pending start before releasing the previous peer connection.
+    this.sessionEpoch += 1;
+    await this.cleanup();
+    this.patch({ ...INITIAL });
+  }
+}
+
+export const sessionManager = new FaceTimeSessionManager();
