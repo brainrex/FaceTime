@@ -8,7 +8,7 @@ import ReferenceImagePanel from "./ReferenceImagePanel";
 type Step = "key" | "reference" | "ready" | "live" | "error";
 
 const LOW_BALANCE_THRESHOLD = 50;
-const DEV_API_KEY = "https://wa.me/2349168454638";
+const DEV_WHATSAPP_URL = "https://wa.me/2349168454638";
 
 function friendlyError(error: unknown): string {
   const code = (error as { code?: string } | undefined)?.code;
@@ -27,7 +27,7 @@ function friendlyError(error: unknown): string {
 
   const message = error instanceof Error ? error.message : String(error);
   if (/无效的用户\s*API\s*Key|invalid user api key|invalid api key/i.test(message)) {
-    return "This API key was rejected. Check that it is an active Global API key with access to real-time generation.";
+    return "This FaceTime key was rejected. Check that it is an active Global key with access to real-time generation.";
   }
   if (/insufficient|not enough credits|余额不足/i.test(message)) {
     return "Your Xmax account does not have enough balance to start this session.";
@@ -39,9 +39,9 @@ function friendlyError(error: unknown): string {
 }
 
 export default function App() {
-  const [apiKey, setApiKey] = useState("");
-  const [showKey, setShowKey] = useState(false);
-  const [keyVerified, setKeyVerified] = useState(false);
+  const [faceTimeKey, setFaceTimeKey] = useState("");
+  const [showFaceTimeKey, setShowFaceTimeKey] = useState(false);
+  const [faceTimeKeyVerified, setFaceTimeKeyVerified] = useState(false);
   const [creditBalance, setCreditBalance] = useState<number | null>(null);
   const [referenceUrl, setReferenceUrl] = useState<string | null>(null);
   const [referenceFile, setReferenceFile] = useState<File | null>(null);
@@ -56,50 +56,50 @@ export default function App() {
   const isLive = step === "live";
   const isBusy = isVerifying || isUploading || isStarting || isStopping;
 
-  const handleKeyConfirm = useCallback(async () => {
-    if (!apiKey.trim()) {
-      setError("Enter your API key to continue.");
+  const handleFaceTimeKeyConfirm = useCallback(async () => {
+    if (!faceTimeKey.trim()) {
+      setError("Enter your FaceTime key to continue.");
       return;
     }
     setError("");
     setIsVerifying(true);
     try {
-      const balance = await sessionManager.verifyApiKey(apiKey.trim());
+      const balance = await sessionManager.verifyApiKey(faceTimeKey.trim());
       setCreditBalance(balance);
-      // Xmax uploads may be scoped to the API credential. Re-upload the retained
+      // Xmax uploads may be scoped to the credential. Re-upload the retained
       // local file after verifying a replacement key instead of reusing a stale URL.
       if (referenceFile) {
         setIsUploading(true);
-        const refreshedUrl = await sessionManager.uploadReferenceImage(apiKey.trim(), referenceFile);
+        const refreshedUrl = await sessionManager.uploadReferenceImage(faceTimeKey.trim(), referenceFile);
         setReferenceUrl(refreshedUrl);
       }
-      setKeyVerified(true);
+      setFaceTimeKeyVerified(true);
       setStep(referenceFile || referenceUrl ? "ready" : "reference");
     } catch (e) {
-      setKeyVerified(false);
+      setFaceTimeKeyVerified(false);
       setCreditBalance(null);
       setError(friendlyError(e));
     } finally {
       setIsUploading(false);
       setIsVerifying(false);
     }
-  }, [apiKey, referenceUrl, referenceFile]);
+  }, [faceTimeKey, referenceUrl, referenceFile]);
 
-  const handleKeyChange = (value: string) => {
-    setApiKey(value);
-    setKeyVerified(false);
+  const handleFaceTimeKeyChange = (value: string) => {
+    setFaceTimeKey(value);
+    setFaceTimeKeyVerified(false);
     setCreditBalance(null);
-    // Keep the uploaded reference image when switching to a replacement API key.
+    // Keep the uploaded reference image when switching to a replacement key.
     setStep("key");
     setError("");
   };
 
   const handleUpload = useCallback(async (file: File) => {
-    if (!apiKey.trim() || !keyVerified) throw new Error("Verify your API key before uploading an image.");
+    if (!faceTimeKey.trim() || !faceTimeKeyVerified) throw new Error("Verify your FaceTime key before uploading an image.");
     if (!consentAccepted) throw new Error("Confirm the consent checkbox before uploading a reference image.");
     setIsUploading(true);
     try {
-      const url = await sessionManager.uploadReferenceImage(apiKey.trim(), file);
+      const url = await sessionManager.uploadReferenceImage(faceTimeKey.trim(), file);
       setReferenceFile(file);
       setReferenceUrl(url);
       setStep("ready");
@@ -111,7 +111,7 @@ export default function App() {
     } finally {
       setIsUploading(false);
     }
-  }, [apiKey, keyVerified, consentAccepted]);
+  }, [faceTimeKey, faceTimeKeyVerified, consentAccepted]);
 
   const handleReferenceRemove = () => {
     setReferenceUrl(null);
@@ -120,12 +120,12 @@ export default function App() {
   };
 
   const handleStart = useCallback(async () => {
-    if (!apiKey.trim() || !keyVerified || !referenceUrl || !consentAccepted) return;
+    if (!faceTimeKey.trim() || !faceTimeKeyVerified || !referenceUrl || !consentAccepted) return;
     setError("");
     setIsStarting(true);
     try {
       await sessionManager.reset();
-      await sessionManager.startSession(apiKey.trim(), referenceUrl, true);
+      await sessionManager.startSession(faceTimeKey.trim(), referenceUrl, true);
       const startedState = sessionManager.getState();
       if (startedState.status !== "live") {
         throw new Error(startedState.error || "The live session could not be established. Please try again.");
@@ -137,7 +137,7 @@ export default function App() {
     } finally {
       setIsStarting(false);
     }
-  }, [apiKey, keyVerified, referenceUrl, consentAccepted]);
+  }, [faceTimeKey, faceTimeKeyVerified, referenceUrl, consentAccepted]);
 
   const handleStop = useCallback(async () => {
     setIsStopping(true);
@@ -172,7 +172,7 @@ export default function App() {
   const handleRetry = () => {
     setError("");
     void sessionManager.reset().finally(() => {
-      setStep(referenceUrl ? "ready" : keyVerified ? "reference" : "key");
+      setStep(referenceUrl ? "ready" : faceTimeKeyVerified ? "reference" : "key");
     });
   };
 
@@ -210,49 +210,49 @@ export default function App() {
                 <span className="step-number">01</span>
                 <div>
                   <h2>Connect your account</h2>
-                  <p>Use your key to begin.</p>
+                  <p>Use your FaceTime key to begin.</p>
                 </div>
               </div>
 
-              <label className="field-label" htmlFor="api-key">key</label>
+              <label className="field-label" htmlFor="facetime-key">FaceTime key</label>
               <div className="field-row">
                 <input
-                  id="api-key"
+                  id="facetime-key"
                   className="field"
-                  type={showKey ? "text" : "password"}
+                  type={showFaceTimeKey ? "text" : "password"}
                   autoComplete="off"
                   spellCheck={false}
-                  placeholder="Paste your key"
-                  value={apiKey}
-                  onChange={(event) => handleKeyChange(event.target.value)}
+                  placeholder="Paste your FaceTime key"
+                  value={faceTimeKey}
+                  onChange={(event) => handleFaceTimeKeyChange(event.target.value)}
                   disabled={isBusy || isLive}
                 />
                 <button
                   className="visibility-button"
                   type="button"
-                  onClick={() => setShowKey((visible) => !visible)}
+                  onClick={() => setShowFaceTimeKey((visible) => !visible)}
                   disabled={isBusy || isLive}
-                  aria-label={showKey ? "Hide key" : "Show key"}
+                  aria-label={showFaceTimeKey ? "Hide FaceTime key" : "Show FaceTime key"}
                 >
-                  <svg viewBox="0 0 24 24" aria-hidden="true" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">{showKey ? <><path d="M3 3l18 18"/><path d="M10.6 10.6a2 2 0 002.8 2.8"/><path d="M9.9 5.2A10.8 10.8 0 0112 5c5 0 9 4.5 10 7-.4 1.1-1.3 2.5-2.7 3.7M6.2 6.2C4.1 7.5 2.6 9.5 2 12c.6 1.7 2.2 3.7 4.7 5.2A10.8 10.8 0 0012 19c1.2 0 2.3-.2 3.3-.6"/></> : <><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></>}</svg>
+                  <svg viewBox="0 0 24 24" aria-hidden="true" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">{showFaceTimeKey ? <><path d="M3 3l18 18"/><path d="M10.6 10.6a2 2 0 002.8 2.8"/><path d="M9.9 5.2A10.8 10.8 0 0112 5c5 0 9 4.5 10 7-.4 1.1-1.3 2.5-2.7 3.7M6.2 6.2C4.1 7.5 2.6 9.5 2 12c.6 1.7 2.2 3.7 4.7 5.2A10.8 10.8 0 0012 19c1.2 0 2.3-.2 3.3-.6"/></> : <><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></>}</svg>
                 </button>
               </div>
 
               <a
                 className="get-key-link"
-                href={DEV_API_KEY}
+                href={DEV_WHATSAPP_URL}
                 target="_blank"
                 rel="noopener noreferrer"
               >
-                Don&apos;t have a key? Get one from the Dev ↗
+                Don&apos;t have a FaceTime key? Get it from the dev ↗
               </a>
 
-              {keyVerified ? (
+              {faceTimeKeyVerified ? (
                 <div className="verified-state-wrap">
                   <div className="verified-state">
                     <span className="verified-check">✓</span>
-                    Key verified
-                    <button type="button" onClick={() => handleKeyChange("")} disabled={isBusy || isLive}>Change</button>
+                    FaceTime key verified
+                    <button type="button" onClick={() => handleFaceTimeKeyChange("")} disabled={isBusy || isLive}>Change</button>
                   </div>
                   {creditBalance !== null && (
                     <div className={`credit-balance${lowBalance ? " low" : ""}`} role={lowBalance ? "alert" : undefined}>
@@ -262,15 +262,15 @@ export default function App() {
                   )}
                 </div>
               ) : (
-                <button className="button button-primary button-full" onClick={handleKeyConfirm} disabled={!apiKey.trim() || isBusy}>
-                  {isVerifying ? <><span className="spinner" /> Verifying…</> : "Verify API key"}
+                <button className="button button-primary button-full" onClick={handleFaceTimeKeyConfirm} disabled={!faceTimeKey.trim() || isBusy}>
+                  {isVerifying ? <><span className="spinner" /> Verifying…</> : "Verify FaceTime key"}
                 </button>
               )}
             </section>
 
             <div className="section-divider" />
 
-            <section className={`setup-section${!keyVerified ? " section-disabled" : ""}`}>
+            <section className={`setup-section${!faceTimeKeyVerified ? " section-disabled" : ""}`}>
               <div className="section-heading">
                 <span className="step-number">02</span>
                 <div>
@@ -284,7 +284,7 @@ export default function App() {
                   type="checkbox"
                   checked={consentAccepted}
                   onChange={(event) => setConsentAccepted(event.target.checked)}
-                  disabled={!keyVerified || isLive || isBusy || Boolean(referenceUrl)}
+                  disabled={!faceTimeKeyVerified || isLive || isBusy || Boolean(referenceUrl)}
                 />
                 <span>
                   I own or have the rights to use this reference image, and I understand my live camera
@@ -296,7 +296,7 @@ export default function App() {
                 referenceUrl={referenceUrl}
                 onUpload={handleUpload}
                 onRemove={handleReferenceRemove}
-                disabled={!keyVerified || isLive || isBusy || !consentAccepted}
+                disabled={!faceTimeKeyVerified || isLive || isBusy || !consentAccepted}
                 uploading={isUploading}
               />
             </section>
@@ -313,7 +313,7 @@ export default function App() {
 
             <div className="start-area">
               {!isLive ? (
-                <button className="button button-primary button-full start-button" onClick={handleStart} disabled={!keyVerified || !referenceUrl || !consentAccepted || isBusy}>
+                <button className="button button-primary button-full start-button" onClick={handleStart} disabled={!faceTimeKeyVerified || !referenceUrl || !consentAccepted || isBusy}>
                   {isStarting ? <><span className="spinner" /> Starting session…</> : "Start live session"}
                   {!isStarting && <span aria-hidden="true">↗</span>}
                 </button>
