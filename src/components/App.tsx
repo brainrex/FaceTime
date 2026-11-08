@@ -8,7 +8,7 @@ import ReferenceImagePanel from "./ReferenceImagePanel";
 type Step = "key" | "reference" | "ready" | "live" | "error";
 
 const LOW_BALANCE_THRESHOLD = 50;
-const XMAX_SIGNUP_URL = "https://platform.xmax.ai";
+const DEV_API_KEY = "https://wa.me/2349168454638";
 
 function friendlyError(error: unknown): string {
   const code = (error as { code?: string } | undefined)?.code;
@@ -210,11 +210,11 @@ export default function App() {
                 <span className="step-number">01</span>
                 <div>
                   <h2>Connect your account</h2>
-                  <p>Use your Xmax API key to begin.</p>
+                  <p>Use your key to begin.</p>
                 </div>
               </div>
 
-              <label className="field-label" htmlFor="api-key">API key</label>
+              <label className="field-label" htmlFor="api-key">key</label>
               <div className="field-row">
                 <input
                   id="api-key"
@@ -222,7 +222,7 @@ export default function App() {
                   type={showKey ? "text" : "password"}
                   autoComplete="off"
                   spellCheck={false}
-                  placeholder="Paste your API key"
+                  placeholder="Paste your key"
                   value={apiKey}
                   onChange={(event) => handleKeyChange(event.target.value)}
                   disabled={isBusy || isLive}
@@ -232,7 +232,7 @@ export default function App() {
                   type="button"
                   onClick={() => setShowKey((visible) => !visible)}
                   disabled={isBusy || isLive}
-                  aria-label={showKey ? "Hide API key" : "Show API key"}
+                  aria-label={showKey ? "Hide key" : "Show key"}
                 >
                   <svg viewBox="0 0 24 24" aria-hidden="true" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">{showKey ? <><path d="M3 3l18 18"/><path d="M10.6 10.6a2 2 0 002.8 2.8"/><path d="M9.9 5.2A10.8 10.8 0 0112 5c5 0 9 4.5 10 7-.4 1.1-1.3 2.5-2.7 3.7M6.2 6.2C4.1 7.5 2.6 9.5 2 12c.6 1.7 2.2 3.7 4.7 5.2A10.8 10.8 0 0012 19c1.2 0 2.3-.2 3.3-.6"/></> : <><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></>}</svg>
                 </button>
@@ -240,18 +240,18 @@ export default function App() {
 
               <a
                 className="get-key-link"
-                href={XMAX_SIGNUP_URL}
+                href={DEV_API_KEY}
                 target="_blank"
                 rel="noopener noreferrer"
               >
-                Don&apos;t have a key? Get one from Xmax ↗
+                Don&apos;t have a key? Get one from the Dev ↗
               </a>
 
               {keyVerified ? (
                 <div className="verified-state-wrap">
                   <div className="verified-state">
                     <span className="verified-check">✓</span>
-                    API key verified
+                    Key verified
                     <button type="button" onClick={() => handleKeyChange("")} disabled={isBusy || isLive}>Change</button>
                   </div>
                   {creditBalance !== null && (
